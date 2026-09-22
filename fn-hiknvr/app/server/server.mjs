@@ -123,6 +123,7 @@ syncCameraDirs(cfg.record.root);
 //    并剥掉文件名前缀 —— 正常运行时会把历史录像搬乱，不能留在启动流程里（补救已完成，不需要再跑）。
 
 const PREFIX = process.env.NVR_PREFIX || '/app/fn-hiknvr';
+const APPVER = process.env.NVR_APPVER || '';   // 由 cmd/main 注入，供界面显示版本号
 function refreshPaths() {
   syncCameraDirs(cfg.record.root);
   for (const d of [cfg.record.root, cfg.live.root, cfg.ring.root, SNAP_ROOT]) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { log('[cfg] 目录不可用', d, e.code || e.message); } }
@@ -190,6 +191,39 @@ function killHard(proc) { const pid = proc?.pid; killP(proc); if (pid) setTimeou
 
 // ---------- 主码流管线：一次拉流 → ① 连续录像 ② 事件环形 ③ HLS 直播（3 路输出）----------
 // 海康只允许 3 路并发 RTSP 会话；main 拉 1 路复制成 3 输出、motion 走子码流 = 每台 2 路会话。
+// ---------- 拉流重试退避 + 告警降噪 ----------
+const RETRY_BASE_MAIN = 5000, RETRY_BASE_MOTION = 3000, RETRY_MAX = 30000, RETRY_HEALTHY = 30000;
+// 进程正常跑够 RETRY_HEALTHY（30 秒）就重置退避：摄像头恢复后不会因为退避越等越久
+function nextRetryDelay(s, key, base) {
+  const ran = Date.now() - (s[key + 'Start'] || 0);
+  if (ran >= RETRY_HEALTHY) { s[key + 'Delay'] = 0; s[key + 'Fails'] = 0; s[key + 'Shown'] = 0; return base; }
+  const delay = s[key + 'Delay'] ? Math.min(s[key + 'Delay'] * 2, RETRY_MAX) : base;
+  s[key + 'Delay'] = delay;
+  s[key + 'Fails'] = (s[key + 'Fails'] || 0) + 1;
+  return delay;
+}
+// 只在失败的第 1 次和每 10 次打一条，避免一直刷屏
+function retryLog(s, key, tag, delay) {
+  const n = s[key + 'Fails'] || 1;
+  const grew = delay > (s[key + 'Shown'] || 0);
+  if (n === 1 || grew || n % 10 === 0) {          // 首次、退避每次变长、以及每 10 次时各记一条
+    s[key + 'Shown'] = delay;
+    log(`[${tag}] 拉流进程退出，${Math.round(delay / 1000)} 秒后重启${n > 1 ? `（连续第 ${n} 次）` : ''}`);
+  }
+}
+// ffmpeg stderr 降噪：同类告警最多每 30 秒打一条，并统计省略次数
+function logStderr(s, tag, raw) {
+  const one = String(raw || '').trim().replace(/\s*\n+\s*/g, ' ⏎ '); if (!one) return;
+  const key = one.replace(/0x[0-9a-fA-F]+/g, '#').replace(/\d+/g, '#').slice(0, 200);   // 归一化：指针地址/数字都抹掉
+  const now = Date.now();
+  if (s.errKey === key) {
+    s.errN = (s.errN || 1) + 1;
+    if (now - (s.errTs || 0) < 30000) return;
+    s.errTs = now; log(`[${tag}] 同类告警已重复 ${s.errN} 次，最近一条：${one.slice(0, 200)}`); return;
+  }
+  if (s.errKey && s.errN > 1) log(`[${tag}] （上一条同类告警共出现 ${s.errN} 次）`);
+  s.errKey = key; s.errN = 1; s.errTs = now; log(`[${tag}]`, one.slice(0, 300));
+}
 function ringKeepCount() {
   const span = cfg.motion.preRoll + cfg.motion.postRoll + 20;
   return Math.max(6, Math.ceil(span / cfg.ring.segmentSeconds));
@@ -218,12 +252,15 @@ function startMain(cam) {
     ...A, '-f', 'hls', '-hls_time', '1', '-hls_list_size', '5',
     '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
     '-hls_segment_filename', path.join(LIVE, 'seg%d.ts'), path.join(LIVE, 'index.m3u8')];
-  log(`[main:${cam.dir}] start -> ${ymdOf(new Date())}/${halfOf(new Date())}`);
+  if (!s.mainFails) log(`[main:${cam.dir}] start -> ${ymdOf(new Date())}/${halfOf(new Date())}`);
   const p = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] });
-  s.mainProc = p;
-  p.stderr.on('data', d => log(`[main:${cam.dir}]`, d.toString().trim()));
+  s.mainProc = p; s.mainStart = Date.now();
+  p.stderr.on('data', d => logStderr(s, `main:${cam.dir}`, d.toString()));
   p.on('exit', () => { s.mainProc = null;
-    if (!shuttingDown && cfg.record.enabled && cfg.cameras.includes(cam)) setTimeout(() => startMain(cam), 5000); });
+    if (shuttingDown || !cfg.record.enabled || !cfg.cameras.includes(cam)) { s.mainDelay = 0; s.mainFails = 0; return; }
+    const delay = nextRetryDelay(s, 'main', RETRY_BASE_MAIN);
+    retryLog(s, 'main', `main:${cam.dir}`, delay);
+    setTimeout(() => startMain(cam), delay); });
 }
 
 // 跨「上午/下午」、跨天、跨小时自动切目录
@@ -255,9 +292,9 @@ function startMotion(cam) {
     '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
     '-hls_segment_filename', path.join(LIVE, 'sub%d.ts'), path.join(LIVE, 'index-sub.m3u8'),
     '-map', '0:v', '-vf', `fps=${fps},scale=${W}:${H},format=gray`, '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'];
-  log(`[motion:${cam.dir}] start (${W}x${H}@${fps}fps)`);
+  if (!s.motionFails) log(`[motion:${cam.dir}] start (${W}x${H}@${fps}fps)`);
   const p = spawn(FFMPEG, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-  s.motionProc = p;
+  s.motionProc = p; s.motionStart = Date.now();
   let buf = Buffer.alloc(0);
   p.stdout.on('data', chunk => {
     buf = Buffer.concat([buf, chunk]);
@@ -266,9 +303,12 @@ function startMotion(cam) {
       analyzeFrame(cam, f, frameSize);
     }
   });
-  p.stderr.on('data', d => { const t = d.toString().trim(); if (t) log(`[motion:${cam.dir}]`, t); });
+  p.stderr.on('data', d => logStderr(s, `motion:${cam.dir}`, d.toString()));
   p.on('exit', () => { s.motionProc = null;
-    if (!shuttingDown && cfg.motion.enabled && cfg.cameras.includes(cam)) setTimeout(() => startMotion(cam), 3000); });
+    if (shuttingDown || !cfg.motion.enabled || !cfg.cameras.includes(cam)) { s.motionDelay = 0; s.motionFails = 0; return; }
+    const delay = nextRetryDelay(s, 'motion', RETRY_BASE_MOTION);
+    retryLog(s, 'motion', `motion:${cam.dir}`, delay);
+    setTimeout(() => startMotion(cam), delay); });
 }
 function analyzeFrame(cam, frame, size) {
   const m = cs(cam).motion;
@@ -769,19 +809,30 @@ function camBrief(cam) {
     motion: { active: m.eventActive, lastMotionTs: m.lastMotionTs, lastScore: m.lastScore, eventCount: m.eventCount },
     live: `/live/${cam.id}/index.m3u8` };
 }
+// 并发受限的 map：列表接口原先是一条条串行 stat + 读 moov，录像多时（几百条以上）在机械盘上会明显变慢
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const n = Math.min(Math.max(1, limit), items.length || 1);
+  await Promise.all(Array.from({ length: n }, async () => {
+    for (;;) { const i = next++; if (i >= items.length) return; out[i] = await fn(items[i], i); }
+  }));
+  return out;
+}
 async function listRecordings(camDirFilter) {
-  const out = [];
-  for (const fp of await walkMp4(cfg.record.root)) {
-    const name = path.basename(fp), t = parseRecMs(name); if (t === null) continue;
-    const st = await fsp.stat(fp).catch(() => null); if (!st) continue;
+  const files = await walkMp4(cfg.record.root);
+  const rows = await mapLimit(files, 8, async fp => {
+    const name = path.basename(fp), t = parseRecMs(name); if (t === null) return null;
     const rel = path.relative(cfg.record.root, fp).split(path.sep).join('/');
     const seg = rel.split('/');
     const camDir = seg.length > 1 ? seg[0] : '';
-    if (camDirFilter && camDir !== camDirFilter) continue;
+    if (camDirFilter && camDir !== camDirFilter) return null;
+    const st = await fsp.stat(fp).catch(() => null); if (!st) return null;
     const complete = await fileComplete(fp, st);
-    out.push({ name, rel, cam: camDir, dir: path.dirname(rel) === '.' ? '' : path.dirname(rel),
-      start: t, size: st.size, event: /-E\.mp4$/.test(name), complete });
-  }
+    return { name, rel, cam: camDir, dir: path.dirname(rel) === '.' ? '' : path.dirname(rel),
+      start: t, size: st.size, event: /-E\.mp4$/.test(name), complete };
+  });
+  const out = rows.filter(Boolean);
   out.sort((a, b) => b.start - a.start); return out;
 }
 
@@ -803,7 +854,8 @@ const handler = async (req, res, viaSock) => {
         configured: cfg.cameras.some(camConfigured),
         enabled: cfg.record.enabled,
         retentionDays: cfg.record.retentionDays, segmentSeconds: cfg.record.segmentSeconds,
-        recordRoot: cfg.record.root, disk: diskInfo(), diskLow: diskLow(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now()
+        recordRoot: cfg.record.root, disk: diskInfo(), diskLow: diskLow(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now(),
+        version: APPVER
       });
     }
     if (p === '/api/motion') {

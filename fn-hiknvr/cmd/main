@@ -45,6 +45,10 @@ start_app() {
   local NODE; NODE="$(resolve_node)" || { echo "未找到 Node.js 运行时（需要 nodejs_v24）" > "${TRIM_TEMP_LOGFILE}"; exit 1; }
 
   mkdir -p "${REC_ROOT}" "${DATA}" || true
+  # 日志轮转：超过 5MB 转存一份（只保留最近一份），避免长期离线把日志撑大
+  if [ -f "${LOG_FILE}" ] && [ "$(stat -c%s "${LOG_FILE}" 2>/dev/null || echo 0)" -gt 5242880 ]; then
+    mv -f "${LOG_FILE}" "${LOG_FILE}.1" 2>/dev/null || true
+  fi
   touch "${LOG_FILE}" 2>/dev/null || true
   chmod 644 "${LOG_FILE}" 2>/dev/null || true
   chmod 755 "${SERVER}" 2>/dev/null || true
@@ -59,6 +63,7 @@ start_app() {
     NVR_PORT="${TRIM_SERVICE_PORT:-8091}" \
     NVR_HTTPS_PORT=8444 \
     NVR_SOCK="${TRIM_APPDEST}/app.sock" \
+    NVR_APPVER="${TRIM_APPVER}" \
     NVR_PREFIX="/app/fn-hiknvr" \
     NVR_CERT_DIR="${NVR_CERT_DIR:-/usr/trim/var/trim_connect/ssls}" \
     "${NODE}" "${SERVER}" >> "${LOG_FILE}" 2>&1 &

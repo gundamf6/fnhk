@@ -200,6 +200,7 @@ window.addEventListener('resize', () => setTimeout(layoutFs, 200));
 async function refreshStatus() {
   try {
     const j = await (await fetch(U('api/status'))).json();
+    if (j.version && $('#ver')) $('#ver').textContent = 'v' + j.version;   // 版本号随安装包自动显示
     cams = j.cameras || [];
     ready = !!j.configured;
     $('#setup').classList.toggle('hidden', ready);
@@ -322,7 +323,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 (async () => {
   // 初始历史项不写 state（首页 state 为空即可，由 route() 兜底判断）
   // 一次性诊断（哪个版本页面 / 是否被套在 iframe 里 / 文档来源），只发一次，便于定位手机端行为
-  try { fetch(U('api/diag?top=' + (window.top === window ? '1' : '0') + '&v=0.2.2-8&ref=' +
+  try { fetch(U('api/diag?top=' + (window.top === window ? '1' : '0') + '&v=0.2.4-1&ref=' +
     encodeURIComponent(document.referrer || '') + '&ua=' + encodeURIComponent(navigator.userAgent))).catch(() => { }); } catch { }
   await refreshStatus();
   const m = /^#cam\/(.+)$/.exec(location.hash || '');
