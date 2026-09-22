@@ -21,6 +21,7 @@ function hkRtsp(ip, port, user, pass, channel, main) {
   const ch = String(Math.max(1, parseInt(channel) || 1) * 100 + (main ? 1 : 2));
   return `rtsp://${encodeURIComponent(user || '')}:${encodeURIComponent(pass || '')}@${ip}:${port || 554}/Streaming/Channels/${ch}`;
 }
+const MAX_CAMS = 4;                        // 与界面/文档一致：最多 4 台摄像机
 const camConfigured = cam => !!(cam && cam.ip);
 const camIdGen = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 function newCamera(o = {}) {
@@ -63,16 +64,32 @@ function defaultConfig() {
     ring: { root: path.join(DATA_ROOT, 'ring'), segmentSeconds: 2 },
     motion: { enabled: true, fps: 2, width: 64, height: 48, diffThreshold: 22, changedRatio: 0.03,
               holdSeconds: 8, preRoll: 15, postRoll: 15 },
-    http: { port: Number(process.env.NVR_PORT || 8091), host: '0.0.0.0', user: 'admin', pass: '' },
+    http: { port: Number(process.env.NVR_PORT || 8091), host: '127.0.0.1', user: 'admin', pass: '' },  // 默认只听本机；局域网访问请改 host 并设置口令
     https: { enabled: String(process.env.NVR_HTTPS || 'false') === 'true', port: Number(process.env.NVR_HTTPS_PORT || 8444),
-             host: '0.0.0.0', domain: process.env.NVR_DOMAIN || '', certDir: process.env.NVR_CERT_DIR || '' }
+             host: '127.0.0.1', domain: process.env.NVR_DOMAIN || '', certDir: process.env.NVR_CERT_DIR || '' }
   };
+}
+function writeCfg() {
+  fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+  try { fs.chmodSync(CFG_PATH, 0o600); } catch {}     // 内含摄像头密码，仅本用户可读
 }
 if (!fs.existsSync(CFG_PATH)) {
   try { fs.mkdirSync(path.dirname(CFG_PATH), { recursive: true }); } catch {}
   fs.writeFileSync(CFG_PATH, JSON.stringify(defaultConfig(), null, 2));
+  try { fs.chmodSync(CFG_PATH, 0o600); } catch {}
 }
+try { fs.chmodSync(CFG_PATH, 0o600); } catch {}       // 老配置文件也收紧权限
 let cfg = JSON.parse(fs.readFileSync(CFG_PATH, 'utf8'));
+// ★ 配置归一化：老版本/手工改过的配置缺字段时，用默认值补齐（避免启动时 undefined 崩溃）
+function mergeDefaults(dst, def) {
+  for (const k of Object.keys(def)) {
+    const dv = def[k];
+    if (dst[k] === undefined || dst[k] === null) { dst[k] = dv; continue; }
+    if (dv && typeof dv === 'object' && !Array.isArray(dv) && typeof dst[k] === 'object' && !Array.isArray(dst[k])) mergeDefaults(dst[k], dv);
+  }
+  return dst;
+}
+cfg = mergeDefaults(cfg, defaultConfig());
 // ---- 老版本(单摄像机 camera)配置迁移 ----
 if (!Array.isArray(cfg.cameras)) {
   const old = cfg.camera || {};
@@ -81,37 +98,15 @@ if (!Array.isArray(cfg.cameras)) {
   delete cfg.camera; delete cfg.previewStream;
 }
 if (!cfg.cameras.length) cfg.cameras = [newCamera()];
-if (!cfg.http) cfg.http = { port: 8091, host: '0.0.0.0', user: 'admin', pass: '' };
+if (!cfg.http) cfg.http = { port: 8091, host: '127.0.0.1', user: 'admin', pass: '' };
 applyCameraUrls(cfg);
 for (const cam of cfg.cameras) if (!cam.id) cam.id = camIdGen();
 syncCameraDirs(cfg.record.root);
 
 // ⚠️ 已移除旧的 migrateRootLayout（会把录像根下所有「日期目录」搬进第一台摄像机目录）——
 // 当录像根与其它应用共用时会误搬别人的数据。
-// 下面这个是一次性修复：把误搬进来、又被 migrateNames 加了前缀的外来录像还原。
-function repairForeignDateDirs() {
-  const today = ymdOf(new Date());
-  const strip = (camDir, d) => {
-    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
-      const fp = path.join(d, f.name);
-      if (f.isDirectory()) { strip(camDir, fp); continue; }
-      const re = new RegExp('^' + camDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-(\\d{8}-\\d{6}(?:-E)?\\.mp4)$');
-      const m = f.name.match(re);
-      if (m) { try { fs.renameSync(fp, path.join(d, m[1])); } catch {} }
-    }
-  };
-  for (const cam of cfg.cameras) {
-    const cd = recDirOf(cam);
-    let ents; try { ents = fs.readdirSync(cd, { withFileTypes: true }); } catch { continue; }
-    for (const e of ents) {
-      if (!e.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(e.name)) continue;
-      if (e.name >= today) continue;                       // 今天的/以后的 = 本机正常目录
-      const p = path.join(cd, e.name), back = path.join(cfg.record.root, e.name);
-      if (fs.existsSync(back)) continue;
-      try { strip(cam.dir, p); fs.renameSync(p, back); log(`[repair] 外来录像已还原到 ${back}`); } catch (err) { log('[repair] 还原失败:', err.message); }
-    }
-  }
-}
+// ⚠️ 也移除了它的补救函数 repairForeignDateDirs()：该函数会把「早于今天」的日期目录搬出摄像机目录
+//    并剥掉文件名前缀 —— 正常运行时会把历史录像搬乱，不能留在启动流程里（补救已完成，不需要再跑）。
 
 const PREFIX = process.env.NVR_PREFIX || '/app/fn-hiknvr';
 function refreshPaths() {
@@ -124,7 +119,24 @@ function refreshPaths() {
 refreshPaths();
 
 const FFMPEG = process.env.NVR_FFMPEG || (['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'].find(p => fs.existsSync(p)) || 'ffmpeg');
-const log = (...a) => console.log(new Date().toISOString(), ...a);
+// ★ 日志脱敏：ffmpeg 的 stderr 会带完整输入地址（含摄像头密码），一律先脱敏再写日志
+const redact = s => String(s)
+  .replace(/rtsp:\/\/[^\s@/]*@/gi, 'rtsp://***@')
+  .replace(/([?&](?:password|pwd|auth)=)[^&\s]*/gi, '$1***');
+const log = (...a) => console.log(new Date().toISOString(), ...a.map(x => (typeof x === 'string' ? redact(x) : x)));
+
+// ★ 安全：未设置访问口令时，禁止把服务监听到非本机地址（旧配置自动纠正）
+function fixHosts() {
+  for (const x of [cfg.http, cfg.https]) {
+    if (!x || !x.host) continue;
+    const h = String(x.host);
+    if (!(cfg.http && cfg.http.pass) && !['127.0.0.1', 'localhost', '::1'].includes(h)) {
+      log(`[sec] 未设置访问口令，监听地址 ${h} → 127.0.0.1（如需局域网访问，请设置 http.user / http.pass）`);
+      x.host = '127.0.0.1';
+    }
+  }
+}
+fixHosts();
 
 // ★ 保命：单个请求的异步错误绝不能让进程挂掉（挂了 = 停止录像）
 process.on('uncaughtException', e => { log('[fatal-guard] uncaughtException:', e && e.message); });
@@ -168,6 +180,12 @@ function ringKeepCount() {
 function startMain(cam) {
   const s = cs(cam);
   if (shuttingDown || !cfg.record.enabled || !camConfigured(cam) || s.mainProc) return;
+  if (diskLow()) {                                   // 磁盘写满保护：暂停录像，1 分钟后再试
+    if (!diskPaused) { diskPaused = true; log('[disk] 剩余空间不足 500MB，已暂停录像（等清理后自动恢复）'); cleanup().catch(() => {}); }
+    setTimeout(() => startMain(cam), 60000);
+    return;
+  }
+  if (diskPaused) { diskPaused = false; log('[disk] 空间已恢复，继续录像'); }
   const RING = ringDirOf(cam), LIVE = liveDirOf(cam);
   const dir = contDirOf(cam, new Date());
   for (const d of [dir, RING, LIVE]) fs.mkdirSync(d, { recursive: true });
@@ -196,6 +214,7 @@ setInterval(() => {
   if (shuttingDown || !cfg.record.enabled) return;
   for (const cam of cfg.cameras) {
     const s = cs(cam);
+    if (s.mainProc && diskLow()) { log('[disk] 剩余空间不足，停止录像'); killP(s.mainProc); }
     const want = contDirOf(cam, new Date());
     if (s.recDir && want !== s.recDir) {
       log(`[main:${cam.dir}] 切换目录 ->`, path.relative(recDirOf(cam), want));
@@ -269,6 +288,15 @@ function parseRingMs(name) {
   const x = name.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.ts$/);
   if (!x) return null;
   return new Date(+x[1], +x[2] - 1, +x[3], +x[4], +x[5], +x[6]).getTime();
+}
+// 白名单：只有「符合本应用命名规则」的录像才归我们管（清理/扫描只动这些，避免误删同目录下别人的视频）
+function oursName(name) {
+  for (const cam of cfg.cameras) {
+    const d = cam.dir; if (!d) continue;
+    const re = new RegExp('^' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-\\d{8}-\\d{6}(-E)?\\.mp4$');
+    if (re.test(name)) return true;
+  }
+  return false;
 }
 const parseRecMs = name => {
   const x = name.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-E)?\.mp4$/);   // 允许 <摄像机名>- 前缀
@@ -371,34 +399,7 @@ function migrateNames() {
   }
   if (n) log(`[migrate] 录像文件名已补「摄像机名-」前缀：${n} 个`);
 }
-// 一次性：旧录像根搬迁（历史默认根在隐藏的 @appshare 下）→ 用户可见目录
-const LEGACY_REC_ROOTS = ['/vol2/@appshare/fn-hiknvr/rec'];
-function migrateRecRoots() {
-  for (const root of LEGACY_REC_ROOTS) {
-    try {
-      if (!fs.existsSync(root)) continue;
-      const dst = cfg.record.root;
-      if (path.resolve(root) === path.resolve(dst)) continue;
-      let n = 0;
-      const merge = (s, d) => {
-        fs.mkdirSync(d, { recursive: true });
-        for (const e of fs.readdirSync(s, { withFileTypes: true })) {
-          const sp = path.join(s, e.name), dp = path.join(d, e.name);
-          if (e.isDirectory()) { merge(sp, dp); continue; }
-          if (!fs.existsSync(dp)) {
-            try { fs.renameSync(sp, dp); } catch { try { fs.copyFileSync(sp, dp); fs.unlinkSync(sp); } catch {} }
-          } else { try { fs.unlinkSync(sp); } catch {} }
-          n++;
-        }
-      };
-      for (const e of fs.readdirSync(root, { withFileTypes: true })) {
-        if (e.isDirectory()) merge(path.join(root, e.name), path.join(dst, e.name));
-      }
-      fs.rmSync(root, { recursive: true, force: true });
-      log(`[migrate] 旧录像已搬到 ${dst}（${n} 个文件），原目录 ${root} 已删除`);
-    } catch (err) { log('[migrate] 录像搬迁失败:', err.message); }
-  }
-}
+// （已移除：旧录像根的一次性搬迁，属于开发环境的历史路径，公开版本不需要）
 
 // ---------- 保留清理 / 环形清理 ----------
 async function walkMp4(root) {
@@ -408,7 +409,7 @@ async function walkMp4(root) {
     for (const e of ents) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) await rec(p);
-      else if (e.isFile() && parseRecMs(e.name) !== null) out.push(p);
+      else if (e.isFile() && parseRecMs(e.name) !== null && oursName(e.name)) out.push(p);
     }
   };
   await rec(root);
@@ -435,6 +436,7 @@ async function fileComplete(fp, st) {
   const c = moovCache.get(fp);
   if (c && c.mtimeMs === st.mtimeMs) return c.complete;
   const complete = await hasMoov(fp);
+  if (moovCache.size > 5000) moovCache.clear();
   moovCache.set(fp, { mtimeMs: st.mtimeMs, complete });
   return complete;
 }
@@ -498,15 +500,6 @@ setInterval(() => {
 
 // ---------- 孤儿清理 ----------
 function _cmdline(pid) { try { return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' '); } catch { return ''; } }
-const CAM_HOSTS = new Set();
-function refreshCamHosts() {
-  CAM_HOSTS.clear();
-  for (const cam of cfg.cameras) {
-    const h = ((cam.rtspMain || '').match(/@([^/:]+)/) || [])[1];
-    if (h) CAM_HOSTS.add(h);
-  }
-}
-refreshCamHosts();
 function reapOrphans() {
   let n = 0;
   for (const d of fs.readdirSync('/proc')) {
@@ -517,9 +510,8 @@ function reapOrphans() {
     if (ppid !== 1) continue;
     const c = _cmdline(pid);
     if (!/^\S*ffmpeg\b/.test(c)) continue;
-    let hit = c.includes(DATA_ROOT + '/');
-    for (const h of CAM_HOSTS) if (c.includes(h)) { hit = true; break; }
-    if (!hit) continue;
+    // 判据收紧：必须引用本应用的数据目录（live/ring 输出），避免误杀用户或其它应用拉同一台摄像头的 ffmpeg
+    if (!c.includes(DATA_ROOT + '/')) continue;
     try { process.kill(pid, 'SIGKILL'); n++; log('[reap] 清理孤儿 ffmpeg pid=' + pid); } catch {}
   }
   if (n) log(`[reap] 共清理 ${n} 个孤儿 ffmpeg`);
@@ -657,7 +649,6 @@ async function browse(dir) {
   for (const e of ents) {
     if (!e.isDirectory()) continue;
     if (e.name.startsWith('@') || e.name.startsWith('.')) continue;
-    let free = 0;
     dirs.push({ name: e.name, path: path.join(n, e.name) });
   }
   dirs.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
@@ -675,27 +666,51 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
   '.m3u8': 'application/vnd.apple.mpegurl', '.ts': 'video/mp2t', '.mp4': 'video/mp4',
   '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json' };
-function authed(req) {
-  if (req.headers['x-trim-userid']) return true;
-  if (!cfg.http.pass) return true;
-  const m = (req.headers.authorization || '').match(/^Basic (.+)$/);
-  if (!m) return false;
-  const [u, p] = Buffer.from(m[1], 'base64').toString().split(':');
-  return u === cfg.http.user && p === cfg.http.pass;
+// 鉴权规则：
+//  · 统一网关（Unix Socket）转发来的请求 —— 网关已校验飞牛登录态，直接放行（socket 由文件权限保护）
+//  · TCP（本机/局域网）—— 设了口令走 Basic；未设口令时只允许本机回环访问
+function authed(req, viaSock) {
+  if (viaSock) return true;
+  if (cfg.http.pass) {
+    const m = (req.headers.authorization || '').match(/^Basic (.+)$/);
+    if (!m) return false;
+    const raw = Buffer.from(m[1], 'base64').toString();
+    const i = raw.indexOf(':');
+    return i > 0 && raw.slice(0, i) === cfg.http.user && raw.slice(i + 1) === cfg.http.pass;
+  }
+  const ra = String((req.socket && req.socket.remoteAddress) || '');
+  return ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1';
 }
 function sendFile(req, res, fp) {
   let st; try { st = fs.statSync(fp); } catch { res.writeHead(404); return res.end('not found'); }
   const H = { 'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store', 'Accept-Ranges': 'bytes' };
   const range = req.headers.range;
   const onErr = e => { log('[sendFile] 读取失败', fp, e.message); try { if (!res.headersSent) res.writeHead(500); res.destroy(); } catch {} };
-  if (range) {
-    const m = range.match(/bytes=(\d*)-(\d*)/);
-    const start = m && m[1] ? +m[1] : 0, end = m && m[2] ? +m[2] : st.size - 1;
+  const m = range && range.match(/bytes=(\d*)-(\d*)/);
+  let start = m && m[1] ? +m[1] : 0, end = m && m[2] ? +m[2] : st.size - 1;
+  if (!Number.isFinite(start) || start < 0) start = 0;
+  if (!Number.isFinite(end) || end >= st.size) end = st.size - 1;
+  if (m && start <= end) {                                   // 合法区间 → 206
     H['Content-Range'] = `bytes ${start}-${end}/${st.size}`; H['Content-Length'] = end - start + 1;
     res.writeHead(206, H); fs.createReadStream(fp, { start, end }).on('error', onErr).pipe(res);
-  } else { H['Content-Length'] = st.size; res.writeHead(200, H); fs.createReadStream(fp).on('error', onErr).pipe(res); }
+  } else {                                                   // 非法/无 Range → 200 全量
+    H['Content-Length'] = st.size; res.writeHead(200, H); fs.createReadStream(fp).on('error', onErr).pipe(res);
+  }
 }
-function readBody(req) { return new Promise(r => { let b = ''; req.on('data', d => b += d); req.on('end', () => r(b)); }); }
+const BODY_LIMIT = 1024 * 1024;                                  // 请求体上限 1MB
+function readBody(req, limit) {
+  const lim = limit || BODY_LIMIT;
+  return new Promise((res, rej) => {
+    let b = '', n = 0;
+    req.on('data', d => {
+      n += d.length;
+      if (n > lim) { try { req.pause(); } catch {} rej(new Error('request body too large')); return; }
+      b += d;
+    });
+    req.on('end', () => res(b));
+    req.on('error', e => rej(e));
+  });
+}
 
 function camBrief(cam) {
   const s = cs(cam);
@@ -721,14 +736,17 @@ async function listRecordings(camDirFilter) {
   out.sort((a, b) => b.start - a.start); return out;
 }
 
-const handler = async (req, res) => {
+const handler = async (req, res, viaSock) => {
   const u = new URL(req.url, 'http://x');
   let p = u.pathname;
   if (PREFIX && (p === PREFIX || p.startsWith(PREFIX + '/'))) {
     p = p.slice(PREFIX.length) || '/';
     if (u.pathname === PREFIX) { res.writeHead(302, { Location: PREFIX + '/' + (u.search || '') }); return res.end(); }
   }
-  if (!authed(req)) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="nvr"' }); return res.end('auth required'); }
+  if (!authed(req, viaSock)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="nvr"' });
+    return res.end('auth required：未设口令时仅允许本机访问；局域网访问请在 config.json 设置 http.pass');
+  }
   try {
     if (p === '/api/status') {
       return json(res, {
@@ -736,7 +754,7 @@ const handler = async (req, res) => {
         configured: cfg.cameras.some(camConfigured),
         enabled: cfg.record.enabled,
         retentionDays: cfg.record.retentionDays, segmentSeconds: cfg.record.segmentSeconds,
-        recordRoot: cfg.record.root, disk: diskInfo(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now()
+        recordRoot: cfg.record.root, disk: diskInfo(), diskLow: diskLow(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now()
       });
     }
     if (p === '/api/motion') {
@@ -748,19 +766,18 @@ const handler = async (req, res) => {
       return json(res, { active: m.eventActive, lastMotionTs: m.lastMotionTs, lastScore: m.lastScore,
         eventCount: m.eventCount, frames: m.frames, ring });
     }
-    if (p === '/api/sim-motion') {
-      const id = u.searchParams.get('cam');
-      const cam = cfg.cameras.find(c => c.id === id) || cfg.cameras[0];
-      if (cam) onMotion(cam, 1);
-      return json(res, { ok: true });
-    }
-    if (p === '/api/diag') { log('[diag]', decodeURIComponent(u.search.slice(1))); return json(res, { ok: true }); }
+    if (p === '/api/diag') { log('[diag]', decodeURIComponent(u.search.slice(1)).slice(0, 120)); return json(res, { ok: true }); }
     if (p === '/api/list') { const cam = u.searchParams.get('cam'); return json(res, await listRecordings(cam || null)); }
     if (p === '/api/snap') {
       const id = u.searchParams.get('cam');
       const cam = cfg.cameras.find(c => c.id === id) || cfg.cameras[0];
       const w = Math.max(0, Math.min(3840, +u.searchParams.get('w') || 0));
       const sub = u.searchParams.get('sub') === '1';
+      // 限流：同一路缩略图 1.5 秒内只生成一次，避免被高频请求反复起 ffmpeg
+      if (cam && w) {
+        const tp = path.join(SNAP_ROOT, `thumb-${cam.id}.jpg`);
+        try { const st = fs.statSync(tp); if (Date.now() - st.mtimeMs < 1500) return sendFile(req, res, tp); } catch {}
+      }
       const s = cam ? await snapshotShared(cam, { w, sub }) : null;
       if (!s) { res.writeHead(503); return res.end('no snap'); }
       return sendFile(req, res, s);
@@ -790,13 +807,14 @@ const handler = async (req, res) => {
           volumes: volumes(), suggest: suggestRoot(req.headers['x-trim-userid']) });
       }
       if (req.method === 'PUT') {
-        let body; try { body = JSON.parse(await readBody(req)); } catch { res.writeHead(400); return res.end('bad json'); }
+        let body; try { body = JSON.parse(await readBody(req)); }
+        catch (e) { status(res, /too large/.test(e.message) ? 413 : 400); res.__bad = true; return json(res, { ok: false, error: /too large/.test(e.message) ? '请求体过大' : 'bad json' }); }
         const sig = () => cfg.cameras.map(cam => [cam.id, cam.ip, cam.port, cam.user, cam.pass, cam.channel, cam.previewStream].join(':')).join('|')
                        + '#' + [cfg.record.root, cfg.record.segmentSeconds].join('|');
         const before = sig();
         if (Array.isArray(body.cameras)) {
           const old = new Map(cfg.cameras.map(c => [c.id, c]));
-          cfg.cameras = body.cameras.slice(0, 8).map(inp => {
+          cfg.cameras = body.cameras.slice(0, MAX_CAMS).map(inp => {
             const prev = old.get(inp.id) || {};
             const cam = newCamera({ ...prev, id: inp.id && old.has(inp.id) ? inp.id : (inp.id || camIdGen()) });
             for (const k of ['name', 'ip', 'user']) if (inp[k] !== undefined) cam[k] = String(inp[k]).trim();
@@ -807,6 +825,7 @@ const handler = async (req, res) => {
             return cam;
           });
           if (!cfg.cameras.length) cfg.cameras = [newCamera()];
+          for (const id of [...state.cams.keys()]) if (!cfg.cameras.some(c => c.id === id)) state.cams.delete(id);   // 回收已删除摄像机的状态
         }
         const rec = body.record || {};
         if (rec.retentionDays !== undefined) cfg.record.retentionDays = Math.min(365, Math.max(1, parseInt(rec.retentionDays) || 3));
@@ -817,11 +836,11 @@ const handler = async (req, res) => {
           try { fs.mkdirSync(nr, { recursive: true }); fs.accessSync(nr, fs.constants.W_OK); cfg.record.root = nr; }
           catch { status(res, 400); return json(res, { ok: false, error: '该目录不可写，请换一个' }); }
         }
-        cfg.record.enabled = true;
+        if (rec.enabled !== undefined) cfg.record.enabled = !!rec.enabled;
         applyCameraUrls(cfg);
         refreshPaths();
-        refreshCamHosts();
-        fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+        fixHosts();
+        writeCfg();
         const changed = before !== sig();
         let liveReady = true;
         if (changed) { restartPipeline(); liveReady = await waitLiveReady(6000); }
@@ -881,6 +900,10 @@ function json(res, o, code) {
   if (res.headersSent) { try { res.end(); } catch {} return; }
   res.writeHead(code || res.__code || 200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o));
 }
+const DISK_MIN_FREE = 500 * 1024 * 1024;             // 录像盘剩余 < 500MB 时暂停录像，等清理后自动恢复
+function diskFree() { try { const s = fs.statfsSync(cfg.record.root); return s.bavail * s.bsize; } catch { return null; } }
+function diskLow() { const f = diskFree(); return f !== null && f < DISK_MIN_FREE; }
+let diskPaused = false;
 function diskInfo() {
   try { const s = fs.statfsSync(cfg.record.root); const total = s.blocks * s.bsize, free = s.bavail * s.bsize;
     return { total, free, usedRatio: 1 - free / total, path: cfg.record.root }; } catch { return null; }
@@ -920,7 +943,7 @@ const servers = [httpServer];
 const SOCK = process.env.NVR_SOCK || '';
 if (SOCK) {
   try { fs.unlinkSync(SOCK); } catch {}
-  const sockServer = http.createServer(handler);
+  const sockServer = http.createServer((req, res) => handler(req, res, true));   // viaSock：仅网关可走信任分支
   sockServer.listen(SOCK, () => {
     try { fs.chmodSync(SOCK, 0o666); } catch {}
     log('[main] unix socket', SOCK, 'prefix', PREFIX);
@@ -950,9 +973,8 @@ setInterval(reapOrphans, 60000);
 pruneSnaps();
 setInterval(pruneSnaps, 3600000);
 migrateNames();
-migrateRecRoots();
-repairForeignDateDirs();
 startAll();
+httpServer.on('error', e => log('[http] 监听失败', e.message));
 httpServer.listen(cfg.http.port, cfg.http.host, () => log(`[main] http://${cfg.http.host}:${cfg.http.port}  cameras=${cfg.cameras.length}  rec=${cfg.record.root}`));
 if (httpsServer) httpsServer.listen(cfg.https.port, cfg.https.host || '0.0.0.0', () =>
   log(`[main] https://${cfg.https.host || '0.0.0.0'}:${cfg.https.port}`));

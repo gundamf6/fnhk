@@ -219,6 +219,7 @@ async function refreshStatus() {
     }
     renderHome();
     const fp = [];
+    if (j.diskLow) fp.push('⚠️ 磁盘空间不足，已暂停录像（清理后自动恢复）');
     if (j.disk) fp.push(`存储：剩余 ${fmtSize(j.disk.free)} / 共 ${fmtSize(j.disk.total)}（保留 ${j.retentionDays} 天）`);
     if (j.res) fp.push(`资源：CPU ${Math.round(j.res.cpu)}% ｜ 内存 ${fmtSize(j.res.mem)}`);
     if (j.recordRoot) fp.push(`目录：${j.recordRoot}`);

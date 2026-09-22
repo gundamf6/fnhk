@@ -9,23 +9,26 @@ CONF="${TRIM_PKGVAR}/config.json"
 if [ ! -f "${CONF}" ]; then
   cat > "${CONF}" <<EOF
 {
-  "camera": {
-    "name": "",
-    "ip": "",
-    "port": 554,
-    "user": "",
-    "pass": "",
-    "channel": 1,
-    "rtspMain": "",
-    "rtspSub": ""
-  },
-  "previewStream": "sub",
+  "cameras": [
+    {
+      "id": "",
+      "name": "",
+      "ip": "",
+      "port": 554,
+      "user": "",
+      "pass": "",
+      "channel": 1,
+      "previewStream": "main",
+      "rtspMain": "",
+      "rtspSub": ""
+    }
+  ],
   "record": { "enabled": true, "segmentSeconds": 300, "retentionDays": 3, "root": "${SHARE}/rec" },
   "live": { "root": "${TRIM_PKGVAR}/live" },
   "ring": { "root": "${TRIM_PKGVAR}/ring", "segmentSeconds": 2 },
   "motion": { "enabled": true, "fps": 2, "width": 64, "height": 48, "diffThreshold": 22, "changedRatio": 0.03, "holdSeconds": 8, "preRoll": 15, "postRoll": 15 },
-  "http": { "port": 8091, "host": "0.0.0.0" },
-  "https": { "enabled": false, "port": 8444, "host": "0.0.0.0" }
+  "http": { "port": 8091, "host": "127.0.0.1", "user": "admin", "pass": "" },
+  "https": { "enabled": false, "port": 8444, "host": "127.0.0.1", "domain": "", "certDir": "" }
 }
 EOF
 fi
