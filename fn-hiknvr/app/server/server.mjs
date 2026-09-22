@@ -100,7 +100,7 @@ if (!Array.isArray(cfg.cameras)) {
 if (!cfg.cameras.length) cfg.cameras = [newCamera()];
 if (!cfg.http) cfg.http = { port: 8091, host: '127.0.0.1', user: 'admin', pass: '' };
 // ★ 首次安装的默认录像目录落在隐藏的系统目录（@appshare/@appdata）里，文件管理器看不见 →
-//   换成「剩余空间最大的存储空间」下的可见目录（如 /vol2/1000/NVR），用户仍可在设置页改。
+//   换成「剩余空间最大的存储空间」下的可见目录（如 /volX/1000/NVR），用户仍可在设置页改。
 try {
 if (!cfg.record.root || /\/@(appdata|appshare)\//.test(cfg.record.root)) {
   const sug = suggestRoot(null);
