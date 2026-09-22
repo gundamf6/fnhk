@@ -99,6 +99,20 @@ if (!Array.isArray(cfg.cameras)) {
 }
 if (!cfg.cameras.length) cfg.cameras = [newCamera()];
 if (!cfg.http) cfg.http = { port: 8091, host: '127.0.0.1', user: 'admin', pass: '' };
+// ★ 首次安装的默认录像目录落在隐藏的系统目录（@appshare/@appdata）里，文件管理器看不见 →
+//   换成「剩余空间最大的存储空间」下的可见目录（如 /vol2/1000/NVR），用户仍可在设置页改。
+try {
+if (!cfg.record.root || /\/@(appdata|appshare)\//.test(cfg.record.root)) {
+  const sug = suggestRoot(null);
+  let ok = false;
+  if (sug && insideVolume(sug) && !/\/@(appdata|appshare)\//.test(sug)) {
+    try { fs.mkdirSync(sug, { recursive: true }); fs.accessSync(sug, fs.constants.W_OK); ok = true; } catch {}
+  }
+  if (ok) { log(`[cfg] 默认录像目录 ${cfg.record.root || '(空)'} → ${sug}（可在设置页修改）`); cfg.record.root = sug; writeCfg(); }
+  else if (sug) log(`[cfg] 建议目录 ${sug} 不可写，保留 ${cfg.record.root || '(空)'}`);
+}
+} catch (e) { log('[cfg] 默认目录处理跳过：' + (e && e.message)); }
+
 applyCameraUrls(cfg);
 for (const cam of cfg.cameras) if (!cam.id) cam.id = camIdGen();
 syncCameraDirs(cfg.record.root);
@@ -111,7 +125,7 @@ syncCameraDirs(cfg.record.root);
 const PREFIX = process.env.NVR_PREFIX || '/app/fn-hiknvr';
 function refreshPaths() {
   syncCameraDirs(cfg.record.root);
-  for (const d of [cfg.record.root, cfg.live.root, cfg.ring.root, SNAP_ROOT]) fs.mkdirSync(d, { recursive: true });
+  for (const d of [cfg.record.root, cfg.live.root, cfg.ring.root, SNAP_ROOT]) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { log('[cfg] 目录不可用', d, e.code || e.message); } }
   for (const cam of cfg.cameras) {
     for (const d of [path.join(cfg.live.root, cam.id), path.join(cfg.ring.root, cam.id)]) fs.mkdirSync(d, { recursive: true });
   }
@@ -120,10 +134,13 @@ refreshPaths();
 
 const FFMPEG = process.env.NVR_FFMPEG || (['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'].find(p => fs.existsSync(p)) || 'ffmpeg');
 // ★ 日志脱敏：ffmpeg 的 stderr 会带完整输入地址（含摄像头密码），一律先脱敏再写日志
-const redact = s => String(s)
-  .replace(/rtsp:\/\/[^\s@/]*@/gi, 'rtsp://***@')
-  .replace(/([?&](?:password|pwd|auth)=)[^&\s]*/gi, '$1***');
-const log = (...a) => console.log(new Date().toISOString(), ...a.map(x => (typeof x === 'string' ? redact(x) : x)));
+// 用函数声明（会提升）：启动早期（配置归一化/路径准备）就要用，不能依赖 const 的初始化顺序
+function redact(s) {
+  return String(s)
+    .replace(/rtsp:\/\/[^\s@/]*@/gi, 'rtsp://***@')
+    .replace(/([?&](?:password|pwd|auth)=)[^&\s]*/gi, '$1***');
+}
+function log(...a) { console.log(new Date().toISOString(), ...a.map(x => (typeof x === 'string' ? redact(x) : x))); }
 
 // ★ 安全：未设置访问口令时，禁止把服务监听到非本机地址（旧配置自动纠正）
 function fixHosts() {
@@ -656,7 +673,7 @@ function volumes() {
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
-const volRoots = () => volumes().map(v => v.path);
+function volRoots() { return volumes().map(v => v.path); }   // 函数声明（提升）
 function insideVolume(p) {
   const n = path.normalize(p);
   return volRoots().some(r => n === r || n.startsWith(r + path.sep));
