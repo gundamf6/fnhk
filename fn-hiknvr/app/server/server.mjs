@@ -516,6 +516,38 @@ function reapOrphans() {
   }
   if (n) log(`[reap] 共清理 ${n} 个孤儿 ffmpeg`);
 }
+// ★ 按摄像机 id 精确杀流（不依赖 state，删除摄像机时用）
+function killByCamRef(id) {
+  let n = 0;
+  const a = `${DATA_ROOT}/live/${id}/`, b = `${DATA_ROOT}/ring/${id}/`;
+  for (const d of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(d)) continue;
+    const pid = +d; if (pid === process.pid) continue;
+    const c = _cmdline(pid);
+    if (!/^\S*ffmpeg\b/.test(c)) continue;
+    if (!c.includes(a) && !c.includes(b)) continue;
+    try { process.kill(pid, 'SIGKILL'); n++; } catch {}
+  }
+  if (n) log(`[cam] 已停止摄像机 ${id} 的 ${n} 个拉流进程`);
+  return n;
+}
+// ★ 兜底：杀掉「引用了已不在配置里的摄像机目录」的 ffmpeg（覆盖删机/崩溃/竞态）
+function reapStale() {
+  const ids = new Set(cfg.cameras.map(c => c.id));
+  const re = new RegExp(DATA_ROOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\/(?:live|ring)\\/([^\\/\\s]+)\\/', 'g');
+  let n = 0;
+  for (const d of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(d)) continue;
+    const pid = +d; if (pid === process.pid) continue;
+    const c = _cmdline(pid);
+    if (!/^\S*ffmpeg\b/.test(c)) continue;
+    re.lastIndex = 0; let alien = false, m;
+    while ((m = re.exec(c))) { if (!ids.has(m[1])) { alien = true; break; } }
+    if (!alien) continue;
+    try { process.kill(pid, 'SIGKILL'); n++; log('[reap] 清理失效摄像机管线 pid=' + pid); } catch {}
+  }
+  if (n) log(`[reap] 共清理 ${n} 个失效管线进程`);
+}
 
 async function migrateFaststart() {
   const marker = path.join(DATA_ROOT, '.faststart-migrated');
@@ -825,7 +857,10 @@ const handler = async (req, res, viaSock) => {
             return cam;
           });
           if (!cfg.cameras.length) cfg.cameras = [newCamera()];
-          for (const id of [...state.cams.keys()]) if (!cfg.cameras.some(c => c.id === id)) state.cams.delete(id);   // 回收已删除摄像机的状态
+          for (const id of [...state.cams.keys()]) if (!cfg.cameras.some(c => c.id === id)) {
+            killByCamRef(id);                                  // ★ 必须真正停流：否则旧管线会一直占着摄像头的并发会话额度
+            state.cams.delete(id);                             // 回收已删除摄像机的状态
+          }
         }
         const rec = body.record || {};
         if (rec.retentionDays !== undefined) cfg.record.retentionDays = Math.min(365, Math.max(1, parseInt(rec.retentionDays) || 3));
@@ -969,7 +1004,8 @@ function shutdown() {
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
 
 reapOrphans();
-setInterval(reapOrphans, 60000);
+reapStale();
+setInterval(() => { reapOrphans(); reapStale(); }, 60000);
 pruneSnaps();
 setInterval(pruneSnaps, 3600000);
 migrateNames();
