@@ -59,7 +59,7 @@
 
 ### 方式一：下载 fpk 安装（推荐）
 
-1. 在 [Releases](../../releases) 下载 `fn-hiknvr-x.y.z.fpk`
+1. 到 **[Releases（发行版）](https://gitee.com/ypopenclaw/fnhk/releases)** 下载 `fn-hiknvr-x.y.z.fpk`（最新版：`fn-hiknvr-0.2.4.fpk`）
 2. 飞牛「应用中心 → 手动安装」，选择该 fpk
 
 ### 方式二：自己打包
