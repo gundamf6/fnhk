@@ -1,0 +1,126 @@
+:root{--bg:#0b1220;--panel:#111a2b;--line:#22314c;--fg:#e6edf7;--mut:#8aa0c0;--acc:#3b82f6;--ok:#22c55e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 system-ui,-apple-system,"Noto Sans CJK SC",sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-weight:600}.cam{color:var(--mut);font-weight:400;font-size:12px;margin-left:6px}
+.status{color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:#9aa4b2;display:inline-block}
+.dot.live{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.dot.off{background:#ef4444}
+main{max-width:1100px;margin:0 auto;padding:12px}
+.player{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9}
+video{width:100%;height:100%;display:block;background:#000}
+.overlay{position:absolute;right:10px;top:10px;background:rgba(0,0,0,.55);padding:2px 10px;border-radius:20px;font-size:12px;letter-spacing:.5px;z-index:4}
+.overlay.rec{background:rgba(59,130,246,.75)}
+.overlay.play{background:rgba(234,179,8,.8);color:#000}
+.bar{position:absolute;right:10px;bottom:10px;display:flex;gap:8px}
+.bar button{background:rgba(17,26,43,.85);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+.bar button:hover{border-color:var(--acc)}
+.hidden{display:none!important}
+.recs{margin-top:16px}
+.recs h2{font-size:15px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
+.recs small{color:var(--mut);font-weight:400;font-size:12px}
+.list{display:block}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px;cursor:pointer;transition:.15s}
+.day{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden;background:rgba(255,255,255,.015)}
+.day>h3{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0;padding:9px 12px;font-size:13.5px;cursor:pointer;background:var(--panel);user-select:none}
+.day>h3 .h-l{display:flex;align-items:center;gap:8px;font-weight:600}
+.day>h3 .h-r{display:flex;align-items:center;gap:6px;color:var(--mut);font-weight:400}
+.day>h3 .arw{color:var(--acc)}
+.day.collapsed>.body{display:none}
+.day>.body{padding:8px 10px 10px}
+.sec{margin-bottom:10px}
+.sec:last-child{margin-bottom:0}
+.sec>h4{margin:0 0 6px;font-size:11.5px;letter-spacing:.5px;color:var(--mut);font-weight:600}
+.hr{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);margin:8px 0 5px;padding:5px 9px;background:rgba(255,255,255,.035);border-radius:6px;cursor:pointer;user-select:none;letter-spacing:.3px}
+.hr .h-r{display:flex;align-items:center;gap:6px}
+.hr .arw{color:var(--acc)}
+.hour.collapsed>.grid{display:none}
+.hour>.grid{margin-bottom:4px}
+.ver{font-size:10px;color:var(--mut);margin-left:6px;opacity:.65;font-weight:400}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.item:hover{border-color:var(--acc);transform:translateY(-1px)}
+.item .t{font-weight:600}.item .s{color:var(--mut);font-size:12px}
+.item.active{border-color:var(--acc);background:#16233c}
+.item.rec{opacity:.55;cursor:default;border-style:dashed}
+.empty{color:var(--mut);padding:10px 0}
+@media(max-width:520px){.brand{font-size:14px}.bar button{padding:5px 9px;font-size:12px}}
+.ctrl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.seg{display:flex;flex:0 0 auto;white-space:nowrap;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;color:var(--mut);border:none;padding:6px 12px;cursor:pointer;font-size:13px;white-space:nowrap}
+.seg button.on{background:var(--acc);color:#fff}
+.minfo{color:var(--mut);font-size:12.5px;flex:1}
+.modeinfo{color:var(--fg);font-size:12.5px;font-weight:600;white-space:nowrap}
+@media(max-width:520px){.modeinfo{text-align:center;white-space:normal}}
+.minfo b{color:var(--fg)}
+.tbtn{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+.tbtn:hover{border-color:var(--acc)}
+.badge{display:inline-block;background:#eab308;color:#000;border-radius:5px;font-size:10px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.recs h2>span{display:flex;align-items:center;gap:10px;min-width:0}
+.seg.small button{padding:4px 10px;font-size:12px}
+footer#foot{color:var(--mut);font-size:12px;text-align:center;padding:16px 0 calc(20px + env(safe-area-inset-bottom))}
+header{padding-top:calc(10px + env(safe-area-inset-top))}
+video{object-fit:contain}
+/* ---- 全屏：锁满屏幕；竖屏时自动旋转 90°（见 app.js layoutFs） ---- */
+.player:fullscreen,.player:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh;border-radius:0}
+.player:fullscreen video,.player:-webkit-full-screen video{width:100%;height:100%;object-fit:contain}
+.player.fs-rot video{object-fit:contain}
+.fs-hint{display:none;position:absolute;left:50%;top:12px;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;font-size:12px;padding:4px 12px;border-radius:20px;z-index:6;white-space:nowrap}
+.player.fs-hint-on .fs-hint{display:block}
+.item:active{transform:scale(.985)}
+@media(max-width:520px){
+  main{padding:8px}
+  .player{border-radius:8px}
+  .bar{gap:6px;right:8px;bottom:8px;flex-wrap:wrap;justify-content:flex-end;max-width:92%}
+  .bar button{padding:6px 9px;font-size:12px}
+  .ctrl{gap:8px;flex-direction:column;align-items:stretch}
+  .ctrl .tbtn{width:100%}
+  .seg{justify-content:center}
+  .seg button{flex:1;padding:9px 12px;font-size:13.5px}
+  .minfo{text-align:center}
+  .grid{grid-template-columns:repeat(2,1fr)}
+}
+/* ---- 飞海监控：设置入口 + 未配置提示 ---- */
+.cfgbtn{color:var(--mut);text-decoration:none;font-size:15px;padding:3px 8px;border:1px solid var(--line);border-radius:8px;line-height:1;margin-left:4px}
+.cfgbtn:hover{color:var(--fg);border-color:var(--acc)}
+.setup{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.4);color:#cfe0ff;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.7}
+.setup b{color:#fff}
+/* ---- 飞海监控 v0.2.1：首页=摄像机快照入口 / 单台页 ---- */
+.cams{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.thumb{position:relative;background:#0a0f1a;border:1px solid var(--line);border-radius:11px;overflow:hidden;aspect-ratio:16/9;cursor:pointer;transition:.15s}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;background:#0a0f1a}
+.thumb.off img{opacity:.22}
+.thumb .tl,.thumb .tr{position:absolute;top:8px;background:rgba(0,0,0,.62);border-radius:7px;padding:2px 9px;font-size:12px}
+.thumb .tl{left:8px;font-weight:600;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb .tr{right:8px;color:#fff}
+.thumb .tr.live{background:rgba(34,197,94,.85)}
+.thumb .tr.off{background:rgba(239,68,68,.85)}
+.thumb .tr.wait{background:rgba(148,163,184,.8)}
+.thumb .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:13px}
+.thumb:active{transform:scale(.99)}
+.thumb:hover{border-color:var(--acc)}
+.thumb.add{display:flex;align-items:center;justify-content:center;border-style:dashed;color:var(--mut);font-size:14px;text-decoration:none}
+.thumb.add:hover{color:var(--fg)}
+.camtop{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.camname{font-weight:600}
+.camst{color:var(--mut);font-size:12px}
+#foot{color:var(--mut);font-size:12px;text-align:center;padding:16px 0 calc(18px + env(safe-area-inset-bottom));line-height:1.9}
+#play{position:fixed;inset:0;background:var(--bg);z-index:30;overflow:auto;padding:calc(10px + env(safe-area-inset-top)) 10px 10px}
+.ptop{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.ptop .ttl{color:var(--mut);font-size:12.5px}
+@media(max-width:520px){.cams{grid-template-columns:1fr}.thumb{border-radius:9px}}
+/* v0.2.1: 控制条移到画面外，不再遮挡画面 */
+.ctrlrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:8px 0 2px}
+.ctrlrow button{flex:0 0 auto;min-width:88px;text-align:center}
+@media(max-width:520px){.ctrlrow{gap:6px}.ctrlrow button{flex:1;min-width:0;padding:9px 6px}}
+/* v0.2.2-8: 「世界坐标层」——按钮/提示按「用户横屏后看到的方位」摆放。
+   竖屏全屏时画面整体被 rotate(90deg)，所以这一层也跟着转 90 度：
+   层内 left/top/right/bottom 就是用户实际看到的方位（右上角=右上角），文字也自然是横排。 */
+.fslayer{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none}
+.fslayer>*{pointer-events:auto}
+.player.fs-rot .fslayer{right:auto;bottom:auto;width:100vh;height:100vw;transform-origin:0 0;transform:rotate(90deg) translateY(-100%)}
+/* 全屏时状态角标挪到左上角，别和右上角的「退出全屏」打架 */
+.player:fullscreen .overlay,.player:-webkit-full-screen .overlay{right:auto;left:10px}
+/* v0.2.2: 全屏退出按钮 */
+.fsexit{position:absolute;right:12px;top:12px;z-index:9;background:rgba(17,26,43,.9);color:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 14px;font-size:13px;font-family:inherit;cursor:pointer}
+.fsexit:active{transform:scale(.97)}

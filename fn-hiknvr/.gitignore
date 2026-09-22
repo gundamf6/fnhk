@@ -1,0 +1,13 @@
+# 打包产物
+*.fpk
+# 运行时配置（可能含摄像机账号/密码，绝不入库）
+config.json
+# 运行/日志
+*.log
+*.pid
+data/
+live/
+ring/
+# 依赖与系统文件
+node_modules/
+.DS_Store

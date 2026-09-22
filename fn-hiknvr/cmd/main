@@ -1,0 +1,92 @@
+#!/bin/bash
+# 飞海监控（fn-hiknvr）生命周期脚本：start / stop / status
+# 由飞牛 fnOS 调用；日志与 PID 写入 TRIM_PKGVAR。
+
+LOG_FILE="${TRIM_PKGVAR}/app.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+APP_DIR="${TRIM_APPDEST}/server"
+SERVER="${APP_DIR}/server.mjs"
+
+# 录像根目录：优先用声明的数据共享目录（文件管理器可见），否则退到 /vol2/nvr
+SHARE="${TRIM_DATA_SHARE_PATHS%%:*}"
+[ -n "${SHARE}" ] || SHARE="/vol2/nvr"
+REC_ROOT="${SHARE}/rec"
+[ -d "${SHARE}" ] && [ ! -w "${SHARE}" ] && REC_ROOT="/vol2/nvr/rec"
+
+CONF="${TRIM_PKGVAR}/config.json"
+DATA="${TRIM_PKGVAR}"
+
+log_msg() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"; }
+
+resolve_node() {
+  local n
+  for n in /var/apps/nodejs_v24/target/bin/node /var/apps/nodejs_v22/target/bin/node \
+           /vol1/@appcenter/nodejs_v24/bin/node /vol1/@appcenter/nodejs_v22/bin/node \
+           /usr/local/bin/node /usr/bin/node ; do
+    [ -x "$n" ] && { echo "$n"; return 0; }
+  done
+  return 1
+}
+
+check_process() { local pid="$1"; [ -n "$pid" ] && [ -d "/proc/$pid" ]; }
+
+status_app() {
+  if [ -f "${PID_FILE}" ]; then
+    local pid; pid="$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')"
+    if check_process "$pid"; then return 0; fi
+    rm -f "${PID_FILE}"
+  fi
+  return 1
+}
+
+start_app() {
+  if status_app; then return 0; fi
+  if [ ! -f "${SERVER}" ]; then echo "缺少服务文件: ${SERVER}" > "${TRIM_TEMP_LOGFILE}"; exit 1; fi
+  local NODE; NODE="$(resolve_node)" || { echo "未找到 Node.js 运行时（需要 nodejs_v24）" > "${TRIM_TEMP_LOGFILE}"; exit 1; }
+
+  mkdir -p "${REC_ROOT}" "${DATA}" || true
+  touch "${LOG_FILE}" 2>/dev/null || true
+  chmod 644 "${LOG_FILE}" 2>/dev/null || true
+  chmod 755 "${SERVER}" 2>/dev/null || true
+
+  log_msg "启动 ${TRIM_APPNAME} ${TRIM_APPVER} (node=${NODE}, rec=${REC_ROOT})"
+  cd "${APP_DIR}" || exit 1
+  nohup env \
+    HOME="${TRIM_PKGHOME:-/root}" \
+    NVR_CONF="${CONF}" \
+    NVR_DATA="${DATA}" \
+    NVR_REC_ROOT="${REC_ROOT}" \
+    NVR_PORT="${TRIM_SERVICE_PORT:-8091}" \
+    NVR_HTTPS_PORT=8444 \
+    NVR_SOCK="${TRIM_APPDEST}/app.sock" \
+    NVR_PREFIX="/app/fn-hiknvr" \
+    NVR_CERT_DIR="${NVR_CERT_DIR:-/usr/trim/var/trim_connect/ssls}" \
+    "${NODE}" "${SERVER}" >> "${LOG_FILE}" 2>&1 &
+  echo "$!" > "${PID_FILE}"
+  chmod 644 "${PID_FILE}" "${LOG_FILE}" 2>/dev/null || true
+  log_msg "已启动 PID=$(cat ${PID_FILE})"
+  return 0
+}
+
+stop_app() {
+  if [ ! -f "${PID_FILE}" ]; then return 0; fi
+  local pid; pid="$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')"
+  log_msg "停止 ${TRIM_APPNAME} PID=${pid}"
+  if check_process "$pid"; then
+    kill -TERM "$pid" 2>>"${LOG_FILE}" || true
+    local i=0
+    while check_process "$pid" && [ $i -lt 12 ]; do sleep 1; i=$((i+1)); done
+    if check_process "$pid"; then kill -KILL "$pid" 2>>"${LOG_FILE}" || true; fi
+  fi
+  rm -f "${PID_FILE}"
+  # 清理可能残留的 ffmpeg（只清本应用启动的）
+  pkill -f "${APP_DIR}/server.mjs" 2>/dev/null || true
+  return 0
+}
+
+case "$1" in
+  start)  start_app ;;
+  stop)   stop_app ;;
+  status) if status_app; then exit 0; else exit 3; fi ;;
+  *)      echo "Unknown command: ${1:-<none>}" > "${TRIM_TEMP_LOGFILE}"; exit 1 ;;
+esac

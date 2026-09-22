@@ -1,0 +1,16 @@
+{
+  "name": "飞海监控",
+  "short_name": "飞海监控",
+  "description": "飞海监控（fn-hiknvr）：海康威视摄像头的飞牛本地监控——实时预览 / 连续+事件双轨录像 / 回放 / 移动侦测",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

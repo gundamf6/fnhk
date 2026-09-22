@@ -1,0 +1,32 @@
+#!/bin/bash
+# 安装完成后：准备目录，写入「空配置」——摄像机参数全部留空，等用户在设置页填写。
+SHARE="${TRIM_DATA_SHARE_PATHS%%:*}"
+[ -n "${SHARE}" ] || SHARE="/vol2/nvr"
+mkdir -p "${SHARE}/rec" "${TRIM_PKGVAR}" 2>/dev/null || true
+chmod 755 "${SHARE}/rec" 2>/dev/null || true
+
+CONF="${TRIM_PKGVAR}/config.json"
+if [ ! -f "${CONF}" ]; then
+  cat > "${CONF}" <<EOF
+{
+  "camera": {
+    "name": "",
+    "ip": "",
+    "port": 554,
+    "user": "",
+    "pass": "",
+    "channel": 1,
+    "rtspMain": "",
+    "rtspSub": ""
+  },
+  "previewStream": "sub",
+  "record": { "enabled": true, "segmentSeconds": 300, "retentionDays": 3, "root": "${SHARE}/rec" },
+  "live": { "root": "${TRIM_PKGVAR}/live" },
+  "ring": { "root": "${TRIM_PKGVAR}/ring", "segmentSeconds": 2 },
+  "motion": { "enabled": true, "fps": 2, "width": 64, "height": 48, "diffThreshold": 22, "changedRatio": 0.03, "holdSeconds": 8, "preRoll": 15, "postRoll": 15 },
+  "http": { "port": 8091, "host": "0.0.0.0" },
+  "https": { "enabled": false, "port": 8444, "host": "0.0.0.0" }
+}
+EOF
+fi
+exit 0

@@ -1,0 +1,15 @@
+appname               = fn-hiknvr
+version               = 0.2.2
+display_name          = 飞海监控
+desc                  = 面向海康威视摄像头的飞牛本地监控：实时预览、连续+事件双轨录像、网页回放、本地移动侦测。<br>只读拉取 RTSP（绝不修改摄像头设置），支持手机网页/PWA 观看，数据仅保存在本机。
+source                = thirdparty
+platform              = x86
+maintainer            = DP
+distributor           = DP
+os_min_version        = 1.2.0
+desktop_uidir         = ui
+desktop_applaunchname = fn-hiknvr.main
+ctl_stop              = true
+checkport             = false
+service_port          = 8091
+changelog             = 0.2.2：多摄像机（最多 4 台）、录像目录可选、首页快照入口+单画面、回放分时段（天/上下午/小时）、直播与回放均支持全屏（横屏按钮方位自适应）。0.2.1：首页改为摄像机快照列表，点入单画面。0.2.0：支持多摄像机与录像目录选择。0.1.0：首个版本。

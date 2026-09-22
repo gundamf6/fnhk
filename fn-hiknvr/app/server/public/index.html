@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>飞海监控</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css?v=0.2.2-8">
+</head>
+<body>
+<header>
+  <span class="brand">飞海监控<span class="ver" id="ver">v0.2.2</span></span>
+  <span class="status"><i class="dot" id="dot"></i><span id="stattxt">连接中…</span>
+    <a class="cfgbtn" href="settings.html" title="设置">⚙</a></span>
+</header>
+<main>
+  <!-- ===== 首页：摄像机快照入口 ===== -->
+  <section id="home">
+    <div id="setup" class="setup hidden">
+      <b>还没配置摄像机</b><br>点右上角 <b>⚙</b> 设置，填上「名称 / IP / 用户名 / 密码」并保存，就会自动开始预览和录像。
+    </div>
+    <div id="cams" class="cams"></div>
+    <div id="foot" class="foot"></div>
+  </section>
+
+  <!-- ===== 单台摄像机 ===== -->
+  <section id="cam" class="hidden">
+    <div class="camtop">
+      <button id="back" class="tbtn">← 全部摄像机</button>
+      <span class="camname" id="camname"></span>
+      <span class="camst" id="camst"></span>
+    </div>
+
+    <div class="player" id="pbox">
+      <video id="lv" playsinline muted></video>
+      <div class="fslayer">
+        <span class="overlay" id="lov">连接中…</span>
+        <div class="fs-hint">↻ 竖屏已自动横屏显示，可旋转手机</div>
+        <button id="fsexit" class="fsexit hidden">✕ 退出全屏</button>
+      </div>
+    </div>
+    <div class="ctrlrow">
+      <button id="mute" class="tbtn">🔇 声音</button>
+      <button id="snap" class="tbtn">📷 抓拍</button>
+      <button id="fs" class="tbtn">⛶ 全屏</button>
+    </div>
+
+    <div class="recs">
+      <h2>回放 <small id="recinfo"></small></h2>
+      <div class="list" id="list"></div>
+    </div>
+  </section>
+</main>
+
+<!-- ===== 回放播放层 ===== -->
+<div id="play" class="hidden">
+  <div class="ptop">
+    <button id="pback" class="tbtn">← 返回直播</button>
+    <span class="ttl" id="ptitle"></span>
+  </div>
+  <div class="player" id="pbox2"><video id="pv" playsinline controls></video><div class="fslayer"><button id="fsexit2" class="fsexit hidden">✕ 退出全屏</button></div></div>
+  <div class="ctrlrow"><button id="fs2" class="tbtn">⛶ 全屏</button></div>
+</div>
+
+<script src="hls.min.js"></script>
+<script src="app.js?v=0.2.2-8"></script>
+</body>
+</html>
