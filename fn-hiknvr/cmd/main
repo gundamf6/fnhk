@@ -42,7 +42,7 @@ status_app() {
 start_app() {
   if status_app; then return 0; fi
   if [ ! -f "${SERVER}" ]; then echo "缺少服务文件: ${SERVER}" > "${TRIM_TEMP_LOGFILE}"; exit 1; fi
-  local NODE; NODE="$(resolve_node)" || { echo "未找到 Node.js 运行时（需要 nodejs_v24）" > "${TRIM_TEMP_LOGFILE}"; exit 1; }
+  local NODE; NODE="$(resolve_node)" || { echo "未找到 Node.js 运行时（需要 Node.js v24）：请到「应用中心」搜索安装 Node.js v24（或 v22）后再启用本应用" > "${TRIM_TEMP_LOGFILE}"; exit 1; }
 
   mkdir -p "${REC_ROOT}" "${DATA}" || true
   # 日志轮转：超过 5MB 转存一份（只保留最近一份），避免长期离线把日志撑大

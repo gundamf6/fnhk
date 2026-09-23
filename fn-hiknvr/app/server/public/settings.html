@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>飞海监控 · 设置</title>
-<link rel="stylesheet" href="style.css?v=0.2.4-1">
+<link rel="stylesheet" href="style.css?v=0.3.0-6">
 <style>
   body{padding:0 0 40px}
   .wrap{max-width:640px;margin:0 auto;padding:14px}
@@ -32,6 +32,7 @@
   #res{margin-top:12px;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
   #res.ok{color:#4ade80}#res.err{color:#f87171}#res.warn{color:#fbbf24}
   .hint{font-size:12px;color:var(--mut,#9fb0cc);margin-top:6px;line-height:1.6}
+  .dupwarn{font-size:12px;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:8px;padding:7px 9px;margin-top:8px;line-height:1.6}
   .tip{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a;border-radius:10px;padding:10px;font-size:12.5px;line-height:1.7;margin-top:10px;display:none}
   .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .pickrow{display:flex;gap:8px;align-items:center}
@@ -63,6 +64,20 @@
   #mkrow input{flex:1}
   .warnbox{margin:0 14px 12px;font-size:11.5px;color:#fcd34d;background:rgba(251,191,36,.08);
     border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:8px 10px;line-height:1.6}
+  /* 品牌 / 自定义 RTSP / ONVIF 扫描 */
+  .custom-rtsp{border:1px dashed #35507c;border-radius:10px;padding:10px;margin-top:6px;background:rgba(59,130,246,.05)}
+  .custom-rtsp label{margin-top:0}
+  .scanbtn{width:100%;margin-top:8px;border:1px solid #35507c;background:rgba(59,130,246,.1);color:#9dc1fb;border-radius:9px;padding:9px;font-size:13px;cursor:pointer;font-family:inherit}
+  .scanres{margin-top:8px;font-size:12.5px;line-height:1.6}
+  .scanmsg{color:var(--mut,#9fb0cc)}
+  .scanmsg.ok{color:#4ade80}.scanmsg.err{color:#f87171}
+  .devitem{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;margin-top:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--fg,#e6ecf7);border-radius:8px;padding:8px 10px;font-size:13px;cursor:pointer;font-family:inherit}
+  .devitem span{color:var(--mut,#9fb0cc);font-size:12px}
+  .streamitem{border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 10px;margin-top:6px;background:rgba(255,255,255,.03)}
+  .streamitem .sname{font-size:13px;margin-bottom:6px}
+  .streamitem .sres{color:var(--mut,#9fb0cc);font-size:11.5px;margin-left:6px}
+  .streamitem .sacts{display:flex;gap:8px}
+  .streamitem .sacts .mini{margin-left:0}
 </style>
 </head>
 <body>
@@ -76,7 +91,7 @@
     <h2>📷 摄像机 <small id="camcount"></small></h2>
     <div id="cams"></div>
     <button class="addcam" id="addcam">＋ 添加摄像机</button>
-    <div class="hint">支持 1~4 台海康摄像机。海康 RTSP 规则：通道 1 主码流 101 / 子码流 102。</div>
+    <div class="hint">支持 1~4 台摄像机：海康/大华/宇视/TP-LINK 按模板自动拼 RTSP 地址，也可选「自定义 RTSP」直接填地址；或用「🔍 扫描局域网摄像头」通过 ONVIF 自动发现并取流。</div>
   </div>
 
   <div class="card">
@@ -125,29 +140,87 @@ const U = p => BASE + String(p).replace(/^\//,'');
 const $ = s => document.querySelector(s);
 const resEl = $('#res'), tipEl = $('#tip');
 const st = { cameras: [], hasPass: {}, root: '', cur: '', parent: null, dirs: [], suggest: null };
+const scan = {};
+let dupAck = '';   // 重复添加二次确认（签名一致才允许继续保存）
+const BRAND_LIST = ['hik', 'dahua', 'uniview', 'tplink', 'custom'];
 function show(msg, cls){ resEl.className = cls || ''; resEl.textContent = msg; }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtGB = n => n == null ? '—' : (n / 1073741824).toFixed(n > 10737418240 ? 0 : 1) + ' GB';
 
+// 同一摄像机重复检测：比较「实际会用的主码流地址」（去凭据 / 忽略 transportmode&profile 参数）
+function normRtsp(u){
+  let s = String(u || '').trim(); if (!s) return '';
+  s = s.replace(/^rtsp:\/\/[^@/]*@/i, 'rtsp://').toLowerCase();
+  const qi = s.indexOf('?');
+  if (qi < 0) return s.replace(/\/+$/, '');
+  const base = s.slice(0, qi).replace(/\/+$/, '');
+  const keep = s.slice(qi + 1).split('&').filter(p => !/^(transportmode|profile)=/.test(p)).sort();
+  return base + (keep.length ? '?' + keep.join('&') : '');
+}
+function rtspMainOf(c){
+  const brand = String(c.brand || 'hik');
+  if (brand === 'custom') return c.rtspMain || '';
+  const ip = String(c.ip || '').trim(); if (!ip) return '';
+  const host = ip + ':' + (String(c.port || '').trim() || 554);
+  const ch = Math.max(1, parseInt(c.channel) || 1);
+  if (brand === 'dahua') return `rtsp://${host}/cam/realmonitor?channel=${ch}&subtype=0`;
+  if (brand === 'uniview') return `rtsp://${host}/media/video1`;
+  if (brand === 'tplink') return `rtsp://${host}/stream1`;
+  return `rtsp://${host}/Streaming/Channels/${ch * 100 + 1}`;
+}
+function camKey(c){ return normRtsp(rtspMainOf(c)); }
+function dupGroups(cams){
+  const m = new Map();
+  cams.forEach((c, i) => {
+    const k = camKey(c); if (!k) return;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(String(c.name || '').trim() || ('摄像机' + (i + 1)));
+  });
+  return [...m.values()].filter(g => g.length > 1);
+}
 function renderCams(){
   const box = $('#cams');
+  const dupIdx = new Set();
+  (() => { const m = new Map(); st.cameras.forEach((c, i) => { const k = camKey(c); if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(i); });
+    [...m.values()].filter(g => g.length > 1).flat().forEach(i => dupIdx.add(i)); })();
   box.innerHTML = st.cameras.map((cam, i) => {
+    const dupNote = dupIdx.has(i) ? '<div class="dupwarn">⚠️ 疑似重复：与另一台摄像机的 IP + 通道（或 RTSP 地址）相同 —— 同一台摄像机加两条会占满它的并发取流路数，建议删掉其中一条。</div>' : '';
     const has = st.hasPass[cam.id];
+    const brand = BRAND_LIST.includes(cam.brand) ? cam.brand : 'hik';
+    const isCustom = brand === 'custom';
+    const useCh = brand === 'hik' || brand === 'dahua';
     return `<div class="card" data-i="${i}" style="margin:10px 0 0;background:rgba(255,255,255,.02)">
-      <div class="camhead"><b>摄像机 ${i + 1}</b><span><button class="mini" data-act="test">测试连接</button><button class="mini d" data-act="del">删除</button></span></div>
+      <div class="camhead"><b>摄像机 ${i + 1}</b><span><button class="mini" data-act="test">测试连接</button><button class="mini d" data-act="del">删除</button></span></div>${dupNote}
       <label>名称</label><input data-k="name" value="${esc(cam.name)}" placeholder="例如：门口 / 客厅">
       <label>IP 地址 *</label><input data-k="ip" value="${esc(cam.ip)}" placeholder="例如 192.168.1.64" inputmode="decimal">
       <div class="row">
         <div><label>RTSP 端口</label><input data-k="port" value="${cam.ip ? esc(cam.port) : ''}" placeholder="554" inputmode="numeric"></div>
-        <div><label>通道号</label><input data-k="channel" value="${cam.ip ? esc(cam.channel) : ''}" placeholder="1" inputmode="numeric"></div>
+        <div class="ch-field"${useCh ? '' : ' style="display:none"'}>
+          <label>通道号</label><input data-k="channel" value="${cam.ip ? esc(cam.channel) : ''}" placeholder="1" inputmode="numeric">
+        </div>
       </div>
-      <label>用户名</label><input data-k="user" value="${esc(cam.user)}" placeholder="例如 admin">
-      <label>密码</label><input data-k="pass" type="password" value="" placeholder="${has ? '留空 = 不修改（已保存）' : '请输入密码'}">
+      <label>品牌</label>
+      <select data-k="brand">
+        <option value="hik"${brand==='hik'?' selected':''}>海康威视</option>
+        <option value="dahua"${brand==='dahua'?' selected':''}>大华</option>
+        <option value="uniview"${brand==='uniview'?' selected':''}>宇视</option>
+        <option value="tplink"${brand==='tplink'?' selected':''}>TP-LINK</option>
+        <option value="custom"${brand==='custom'?' selected':''}>自定义 RTSP</option>
+      </select>
+      <div class="custom-rtsp"${isCustom ? '' : ' style="display:none"'}>
+        <label>主码流 RTSP 地址 *</label><input data-k="rtspMain" value="${esc(cam.rtspMain)}" placeholder="rtsp://user:pass@ip:554/...">
+        <label>子码流 RTSP 地址（可空）</label><input data-k="rtspSub" value="${esc(cam.rtspSub)}" placeholder="留空 = 只拉主码流">
+      </div>
+      <label>用户名</label><input data-k="user" value="${esc(cam.user)}" placeholder="例如 admin" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label>密码</label><input data-k="pass" type="password" value="" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="${has ? '留空 = 不修改（已保存）' : '请输入密码'}">
       <label>预览用码流</label>
       <select data-k="previewStream">
         <option value="main">主码流 · 高清（推荐）</option>
         <option value="sub">子码流 · 省资源</option>
       </select>
+      <div class="hint scanhint">💡 通过扫描添加的摄像机走 <b>ONVIF</b> 协议：<b>请先填好上面的「用户名 / 密码」，再点扫描、再点设备</b>。</div>
+      <button class="scanbtn" data-act="scan">🔍 扫描局域网摄像头</button>
+      <div class="scanres"></div>
       <div class="hint">密码只保存在本机 NAS，不会上传；主码流更清晰、更吃 CPU/带宽。</div>
       <div class="hint cmsg"></div>
     </div>`;
@@ -164,21 +237,24 @@ function getCam(i){
   return c;
 }
 $('#cams').addEventListener('click', async e => {
+  const devBtn = e.target.closest('button.devitem[data-dev]');
+  if (devBtn) { await doProfiles(+devBtn.closest('.card[data-i]').dataset.i, +devBtn.dataset.dev); return; }
   const btn = e.target.closest('button[data-act]'); if (!btn) return;
   const i = +btn.closest('.card[data-i]').dataset.i;
   const act = btn.dataset.act;
   if (act === 'del') {
-    if (st.cameras.length <= 1) return show('至少保留一台摄像机', 'err');
-    st.cameras.splice(i, 1); renderCams(); show('已删除该摄像机（保存后生效）', 'warn');
+    st.cameras.splice(i, 1); delete scan[i]; renderCams();
+    show(st.cameras.length ? '已删除该摄像机（保存后生效）' : '已删除全部摄像机（点「保存」后生效，届时不再录像；可随时用下面「＋ 添加摄像机」加回来）', 'warn');
     return;
   }
+  if (act === 'scan') { await doScan(i); return; }
   if (act === 'test') {
     const cam = getCam(i), card = $(`.card[data-i="${i}"]`), msg = card.querySelector('.cmsg');
     if (!cam.ip) { msg.style.color = '#f87171'; msg.textContent = '✗ 请先填写 IP'; return; }
     btn.disabled = true; msg.style.color = ''; msg.textContent = '正在连接摄像机，请稍候…（最多约 20 秒）';
     try{
       const r = await (await fetch(U('api/test'), { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ id: cam.id, camera: { name: cam.name, ip: cam.ip, port: cam.port, user: cam.user, pass: cam.pass, channel: cam.channel } }) })).json();
+        body: JSON.stringify({ id: cam.id, camera: cam }) })).json();
       const t = s => !s ? '（无）' : (!s.ok ? '✗ ' + (s.error || '失败') : `✓ ${s.codec.toUpperCase()} ${s.width}×${s.height}${s.audio ? ' + 音频' : '（无音频）'}`);
       msg.style.color = r.ok ? (r.h265 ? '#fbbf24' : '#4ade80') : '#f87171';
       msg.textContent = `主码流：${t(r.main)}\n子码流：${t(r.sub)}`;
@@ -187,9 +263,72 @@ $('#cams').addEventListener('click', async e => {
     finally { btn.disabled = false; }
   }
 });
+$('#cams').addEventListener('change', e => {
+  const sel = e.target.closest('select[data-k="brand"]'); if (!sel) return;
+  const i = +sel.closest('.card[data-i]').dataset.i;
+  st.cameras[i].brand = sel.value;
+  applyBrandUI($(`.card[data-i="${i}"]`), sel.value);
+});
+function applyBrandUI(card, brand){
+  const chField = card.querySelector('.ch-field');
+  if (chField) chField.style.display = (brand === 'hik' || brand === 'dahua') ? '' : 'none';
+  const cus = card.querySelector('.custom-rtsp');
+  if (cus) cus.style.display = brand === 'custom' ? '' : 'none';
+}
+/* ---------- ONVIF 扫描 / 取流 ---------- */
+async function doScan(i){
+  const card = $(`.card[data-i="${i}"]`), box = card.querySelector('.scanres');
+  box.innerHTML = '<div class="scanmsg">🔍 正在扫描局域网摄像头…（约 5 秒）</div>';
+  try{
+    const r = await (await fetch(U('api/onvif/discover'), { method:'POST' })).json();
+    const devices = r.devices || [];
+    if (!devices.length) { box.innerHTML = '<div class="scanmsg err">没扫到设备：可能摄像机未开启 ONVIF / IP 不在同一网段 / 网络隔离</div>'; return; }
+    scan[i] = { devices };
+    box.innerHTML = '<div class="scanmsg">找到 ' + devices.length + ' 台设备，点选一台读取码流：</div>' +
+      devices.map((d, k) => `<button class="devitem" data-dev="${k}">${esc(d.name || '未知设备')}<span>${esc(d.ip || '')}</span></button>`).join('');
+  }catch(err){ box.innerHTML = '<div class="scanmsg err">扫描失败：' + esc(err.message) + '</div>'; }
+}
+async function doProfiles(i, devIndex){
+  const card = $(`.card[data-i="${i}"]`), box = card.querySelector('.scanres');
+  const dev = (scan[i] && scan[i].devices && scan[i].devices[devIndex]) || {};
+  const cam = getCam(i);
+  if (!cam.user) { box.innerHTML = '<div class="scanmsg err">⚠️ 请先填写该摄像机的「用户名」和「密码」，再点这台设备</div>'; return; }
+  box.innerHTML = '<div class="scanmsg">正在读取 ' + esc(dev.name || dev.ip || '设备') + ' 的码流…</div>';
+  try{
+    const r = await (await fetch(U('api/onvif/profiles'), { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ xaddr: dev.xaddr, id: st.cameras[i].id, user: cam.user, pass: cam.pass || '' }) })).json();
+    if (!r.ok) { box.innerHTML = '<div class="scanmsg err">✗ ' + esc(r.error || '读取失败') + '</div>'; return; }
+    const list = (r.profiles || []).filter(p => p.uri);
+    if (!list.length) { box.innerHTML = '<div class="scanmsg err">该设备没有可用的码流</div>'; return; }
+    // 自动定死：主码流 = 分辨率最大的一路；子码流 = 分辨率最小的一路（跳过没分辨率信息的）
+    const sized = list.filter(p => p.width && p.height);
+    const pool = (sized.length ? sized : list).slice().sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    const mainP = pool[0];
+    let subP = null;
+    for (let k = pool.length - 1; k >= 1; k--) if ((pool[k].width * pool[k].height) < (mainP.width * mainP.height)) { subP = pool[k]; break; }
+    const creds = (cam.user || cam.pass) ? encodeURIComponent(cam.user || '') + ':' + encodeURIComponent(cam.pass || '') + '@' : '';
+    const withCreds = u => (u && creds && !/^rtsp:\/\/[^/]*@/.test(u)) ? u.replace(/^rtsp:\/\//i, 'rtsp://' + creds) : u;
+    const cur = st.cameras[i];
+    cur.brand = 'custom';
+    cur.rtspMain = withCreds(mainP.uri);
+    cur.rtspSub = subP ? withCreds(subP.uri) : '';
+    if (dev.ip) cur.ip = dev.ip;
+    const pm = /rtsp:\/\/[^\/:]+:(\d+)\//.exec(mainP.uri);
+    if (pm) cur.port = pm[1];
+    if (!String(cur.name || '').trim()) {
+      const info = r.info || {};
+      cur.name = ([info.manufacturer, info.model].filter(Boolean).join(' ').trim()) || (dev.name || '').trim() || dev.ip || '摄像机';
+    }
+    renderCams();
+    const txt = p => (p.width && p.height) ? (p.width + '×' + p.height) : (p.resolution || '分辨率未知');
+    $(`.card[data-i="${i}"]`).querySelector('.scanres').innerHTML =
+      '<div class="scanmsg ok">✅ 已自动配置：主码流 ' + esc(txt(mainP)) +
+      (subP ? ' / 子码流 ' + esc(txt(subP)) : '（该设备只有一路，子码流留空）') + ' · 保存后生效</div>';
+  }catch(err){ box.innerHTML = '<div class="scanmsg err">读取失败：' + esc(err.message) + '</div>'; }
+}
 $('#addcam').onclick = () => {
   if (st.cameras.length >= 4) return;
-  st.cameras.push({ id: '', name: '', ip: '', port: 554, user: '', channel: 1, previewStream: 'main' });
+  st.cameras.push({ id: '', name: '', ip: '', port: 554, user: '', channel: 1, brand: 'hik', rtspMain: '', rtspSub: '', previewStream: 'main' });
   renderCams();
 };
 /* ---------- 目录选择器 ---------- */
@@ -245,7 +384,8 @@ async function load(){
   try{
     const j = await (await fetch(U('api/config'))).json();
     const c = j.config || {}, rec = c.record || {};
-    st.cameras = (c.cameras && c.cameras.length ? c.cameras : [{ id:'', name:'', ip:'', port:554, user:'', channel:1, previewStream:'main' }]);
+    st.cameras = (c.cameras && c.cameras.length ? c.cameras : [{ id:'', name:'', ip:'', port:554, user:'', channel:1, brand:'hik', rtspMain:'', rtspSub:'', previewStream:'main' }])
+      .map(cam => ({ ...cam, brand: BRAND_LIST.includes(cam.brand) ? cam.brand : 'hik', rtspMain: cam.rtspMain || '', rtspSub: cam.rtspSub || '' }));
     st.hasPass = j.hasPass || {};
     st.volumes = j.volumes || []; st.suggest = j.suggest || null;
     st.root = rec.root || '';
@@ -258,7 +398,16 @@ async function load(){
 }
 $('#save').onclick = async () => {
   const cams = st.cameras.map((_, i) => getCam(i));
-  if (!cams.some(c => c.ip)) return show('请至少填写一台摄像机的 IP', 'err');
+  if (cams.length && !cams.some(c => c.ip)) return show('请至少填写一台摄像机的 IP（或删光摄像机）', 'err');
+  for (const c of cams) if (c.brand === 'custom' && !c.rtspMain) return show('自定义 RTSP 的主码流地址不能为空', 'err');
+  const dg = dupGroups(cams);
+  if (dg.length) {
+    const sig = JSON.stringify(dg);
+    if (dupAck !== sig) {
+      dupAck = sig;
+      return show('⚠️ 检测到重复添加：' + dg.map(g => g.join(' 与 ')).join('；') + ' 的 IP + 通道（或 RTSP 地址）相同。\n\n同一台摄像机加两条会占满它的并发取流路数（可能两边都拉不到画面），建议删掉其中一条。\n\n如果确实是两台不同的设备/地址，请再点一次「保存」继续。', 'warn');
+    }
+  }
   const root = ($('#root').value || '').trim();
   if (!root) return show('请点「选择目录」选择录像保存目录', 'err');
   const btn = $('#save'); btn.disabled = true; show('保存中…', '');
