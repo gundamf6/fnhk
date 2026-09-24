@@ -2,7 +2,7 @@
 # 构建（在仓库根目录执行）：
 #   docker build -t fnhk:latest .
 #   docker buildx build --platform linux/amd64,linux/arm64 -t <你的仓库>/fnhk:latest --push .
-FROM node:24-bookworm-slim
+FROM node:24-alpine
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
@@ -17,10 +17,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVR_FFMPEG=/usr/bin/ffmpeg
 
 # 自带 ffmpeg（用户无需自行安装），顺手换上时区
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata \
- && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone \
- && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ffmpeg tzdata ca-certificates \
+ && cp /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
 
 WORKDIR /app
 COPY fn-hiknvr/app/server/ /app/
