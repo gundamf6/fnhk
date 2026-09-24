@@ -9,7 +9,7 @@
 
 ## 第一种安装方式：在线安装（推荐）
 
-一行命令（**照抄即可**：`/vol1` 是飞牛的第 1 块硬盘；群晖换 `/volume1`，其它系统换成自己的盘）：
+一行命令（**飞牛用户照抄即可**，见下方对照表）：
 
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
@@ -18,6 +18,19 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -v /vol1/docker/fnhk/rec:/rec \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 ```
+
+> ⚠️ **路径对照表**：`/vol1` = 飞牛的**第 1 块硬盘**。**群晖 / 威联通不要直接照抄** —— Docker 不会报错，但会**悄悄建到系统分区**（分区很小、可能被写满，你在文件管理器里也找不到）。
+>
+> | 你的系统 | 把 `/vol1` 换成 |
+> |---|---|
+> | 飞牛 fnOS | `/vol1`（照抄） |
+> | 群晖 DSM | `/volume1` |
+> | 威联通 QTS | `/share/CACHEDEV1_DATA` |
+> | 绿联 / 极空间 / 其它国产 NAS | `/volume1`，没有就用文件管理器里那块盘的路径 |
+> | 树莓派 / Linux | `/opt` 或 `/home/你的用户名` |
+> | Windows Docker Desktop | 用命名卷：`-v fnhk-data:/data -v fnhk-rec:/rec` |
+>
+> **录像是大头**，建议把第二个 `-v`（`/rec`）指向容量大的盘；装好也能在「设置 → 保存目录」里改。
 
 取首次启动的访问密码：
 
@@ -57,7 +70,7 @@ docker compose up -d
 docker logs fnhk      # ← 首次启动的访问密码在这里
 ```
 
-> 上面左边是宿主机（你 NAS）上的路径，`/vol1` = 飞牛第 1 块硬盘（群晖用 `/volume1`）；目录不存在 Docker 会自动创建。右边 `/data`、`/rec` 是容器内固定路径，**别改**。
+> 上面左边是宿主机（你 NAS）上的路径（按上表换）；目录不存在 Docker 会自动创建。右边 `/data`、`/rec` 是容器内固定路径，**别改**。
 
 ---
 

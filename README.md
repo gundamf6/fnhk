@@ -87,7 +87,7 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
 docker logs fnhk      # 首次启动的访问密码在这里
 ```
 
-> 路径说明：`/vol1` 是飞牛的**第 1 块硬盘（存储空间 1）**，照抄即可（目录会自动创建）。群晖是 `/volume1`、威联通是 `/share/...`，请换成自己机器的路径。录像是大头，建议把第二个 `-v`（`/rec`）指向容量大的盘；装好后也能在「设置 → 保存目录」里随时改。
+> ⚠️ **路径别乱抄**：`/vol1` = 飞牛的**第 1 块硬盘**，飞牛用户照抄即可（自动创建）。**群晖 / 威联通不要直接照抄 `/vol1`** —— Docker 不报错，但会**悄悄建到系统分区**（分区很小、可能写满且难找）。对照表：群晖 `/volume1`｜威联通 `/share/CACHEDEV1_DATA`｜绿联/极空间 `/volume1`｜树莓派/Linux `/opt`｜Windows Docker Desktop 用命名卷 `-v fnhk-data:/data -v fnhk-rec:/rec`。**录像建议放大盘**；装好也能在「设置 → 保存目录」里改。
 
 浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
 
