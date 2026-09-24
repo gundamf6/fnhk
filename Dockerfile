@@ -13,8 +13,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVR_REC_ROOT=/rec \
     NVR_PORT=8091 \
     NVR_HTTP_HOST=0.0.0.0 \
+    NVR_HTTP_USER=admin \
     NVR_PREFIX= \
     NVR_FFMPEG=/usr/bin/ffmpeg
+# 注：默认口令 admin 由 entrypoint.sh 在「首次启动」时写入配置；用户可在网页里自行修改（改完写入 /data/config.json，重启不丢）。
+#     故意不在这里写 ENV NVR_HTTP_PASS —— 否则每次重启都会被环境变量覆盖回去，用户改的密码会失效。
 
 # 自带 ffmpeg（用户无需自行安装），顺手换上时区
 RUN apk add --no-cache ffmpeg tzdata ca-certificates \

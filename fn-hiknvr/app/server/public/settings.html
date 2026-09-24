@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>飞海监控 · 设置</title>
-<link rel="stylesheet" href="style.css?v=0.4.0-2">
+<link rel="stylesheet" href="style.css?v=0.4.0-3">
 <style>
   body{padding:0 0 40px}
   .wrap{max-width:640px;margin:0 auto;padding:14px}
@@ -111,6 +111,19 @@
       <div><label>单段时长（秒）</label><input id="segmentSeconds" inputmode="numeric" placeholder="300"></div>
     </div>
     <div class="hint">超过保留天数的最早录像会被自动删除（循环覆盖）。</div>
+  </div>
+
+  <div class="card">
+    <h2>🔑 访问口令 <small id="pwstate"></small></h2>
+    <div id="pwnag" class="dupwarn" style="display:none">⚠️ 你正在使用<b>默认密码 admin</b>，建议现在就改掉。</div>
+    <label>当前密码</label>
+    <input id="pwcur" type="password" autocomplete="current-password" placeholder="现在登录用的密码">
+    <div class="row" style="margin-top:2px">
+      <div><label>新密码</label><input id="pwnew" type="password" autocomplete="new-password" placeholder="至少 4 位"></div>
+      <div><label>再输一次</label><input id="pwnew2" type="password" autocomplete="new-password" placeholder="重复新密码"></div>
+    </div>
+    <div class="acts" style="margin-top:10px"><button class="btn" id="pwsave">修改口令</button></div>
+    <div class="hint">改完需要用新密码重新登录（浏览器会重新弹一次登录框）。忘了也不用怕：启动/重建容器时加 <code>-e NVR_HTTP_PASS=新密码</code> 就能重置，<b>录像和摄像机配置都不会丢</b>。</div>
   </div>
 
   <div class="acts">
@@ -406,8 +419,27 @@ async function load(){
     if (st.root) $('#roothint').textContent = `录像按「摄像机 / 日期 / 时段」分目录保存 · 当前 ${st.root}`;
     $('#retentionDays').value = rec.retentionDays || 3;
     $('#segmentSeconds').value = rec.segmentSeconds || 300;
+    if (j.defaultPass) { $('#pwnag').style.display = ''; $('#pwstate').textContent = '默认密码'; }
+    else $('#pwstate').textContent = j.httpUser ? ('用户 ' + j.httpUser) : '未启用';
   }catch(e){ show('读取配置失败：' + e.message, 'err'); }
 }
+$('#pwsave').onclick = async () => {
+  const current = $('#pwcur').value, newPass = $('#pwnew').value, newPass2 = $('#pwnew2').value;
+  if (!current) return show('请先填写当前密码', 'err');
+  if (newPass.length < 4) return show('新密码至少 4 位', 'err');
+  if (newPass !== newPass2) return show('两次输入的新密码不一致', 'err');
+  const b = $('#pwsave'); b.disabled = true; show('提交中…', '');
+  try{
+    const r = await (await fetch(U('api/setpass'), { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ current, newPass, newPass2 }) })).json();
+    if (r.ok) {
+      show('✅ 口令已修改，请用新密码重新登录。', 'ok');
+      $('#pwcur').value = ''; $('#pwnew').value = ''; $('#pwnew2').value = '';
+      $('#pwnag').style.display = 'none'; $('#pwstate').textContent = '已自定义';
+    } else show('修改失败：' + (r.error || ''), 'err');
+  }catch(e){ show('修改失败：' + e.message, 'err'); }
+  finally { b.disabled = false; }
+};
 $('#save').onclick = async () => {
   const cams = st.cameras.map((_, i) => getCam(i));
   if (cams.length && !cams.some(c => c.ip)) return show('请至少填写一台摄像机的 IP（或删光摄像机）', 'err');

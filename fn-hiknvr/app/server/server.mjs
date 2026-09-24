@@ -1009,6 +1009,8 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 // 鉴权规则：
 //  · 统一网关（Unix Socket）转发来的请求 —— 网关已校验飞牛登录态，直接放行（socket 由文件权限保护）
 //  · TCP（本机/局域网）—— 设了口令走 Basic；未设口令时只允许本机回环访问
+// Docker 版默认账号口令均为 admin（开箱即用）；用户可在设置页自行修改，改完写入配置、重启不丢。
+const isDefaultPass = () => !!(cfg.http && cfg.http.pass === 'admin');
 function authed(req, viaSock) {
   if (viaSock) return true;
   if (cfg.http.pass) {
@@ -1106,6 +1108,7 @@ const handler = async (req, res, viaSock) => {
         cameras: cfg.cameras.map(camBrief),
         configured: cfg.cameras.some(camConfigured),
         enabled: cfg.record.enabled,
+        defaultPass: isDefaultPass(), httpUser: cfg.http.user || '',
         retentionDays: cfg.record.retentionDays, segmentSeconds: cfg.record.segmentSeconds,
         recordRoot: cfg.record.root, disk: diskInfo(), diskLow: diskLow(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now(),
         version: APPVER
@@ -1152,6 +1155,20 @@ const handler = async (req, res, viaSock) => {
       try { fs.mkdirSync(full, { recursive: true }); return json(res, { ok: true, path: full }); }
       catch (e) { status(res, 500); return json(res, { ok: false, error: e.message }); }
     }
+    // ---- 修改访问口令（需已登录 + 校验当前密码）----
+    if (p === '/api/setpass' && req.method === 'POST') {
+      let body = {}; try { body = JSON.parse(await readBody(req)); } catch {}
+      const cur = String(body.current ?? ''), np = String(body.newPass ?? ''), np2 = String(body.newPass2 ?? body.newPass ?? '');
+      if (!cfg.http.pass) { status(res, 400); return json(res, { ok: false, error: '当前未启用访问口令' }); }
+      if (cur !== cfg.http.pass) { status(res, 403); return json(res, { ok: false, error: '当前密码不正确' }); }
+      if (np.length < 4) { status(res, 400); return json(res, { ok: false, error: '新密码至少 4 位' }); }
+      if (np !== np2) { status(res, 400); return json(res, { ok: false, error: '两次输入的新密码不一致' }); }
+      if (np === cfg.http.pass) { return json(res, { ok: true, unchanged: true }); }
+      cfg.http.pass = np;
+      writeCfg();
+      log('[sec] 访问口令已更新（下次请求需用新口令）');
+      return json(res, { ok: true });
+    }
     if (p === '/api/config') {
       if (req.method === 'GET') {
         const c = JSON.parse(JSON.stringify(cfg));
@@ -1161,6 +1178,7 @@ const handler = async (req, res, viaSock) => {
           if (cam.brand !== 'custom') { cam.rtspMain = ''; cam.rtspSub = ''; }
         }
         return json(res, { config: c, hasPass, configured: cfg.cameras.some(camConfigured), enabled: cfg.record.enabled,
+          defaultPass: isDefaultPass(), httpUser: cfg.http.user || '',
           volumes: volumes(), suggest: suggestRoot(req.headers['x-trim-userid']) });
       }
       if (req.method === 'PUT') {

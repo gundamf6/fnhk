@@ -124,3 +124,9 @@ video{object-fit:contain}
 /* v0.2.2: 全屏退出按钮 */
 .fsexit{position:absolute;right:12px;top:12px;z-index:9;background:rgba(17,26,43,.9);color:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 14px;font-size:13px;font-family:inherit;cursor:pointer}
 .fsexit:active{transform:scale(.97)}
+
+/* v0.4.x: 默认密码提醒条 */
+.pwnag{padding:10px 12px;margin:0 0 10px;border-radius:10px;font-size:13px;line-height:1.6;
+  background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a}
+.pwnag a{color:#fde68a;font-weight:600}
+.pwnag.hidden{display:none}
