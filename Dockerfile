@@ -18,7 +18,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # 自带 ffmpeg（用户无需自行安装），顺手换上时区
 RUN apk add --no-cache ffmpeg tzdata ca-certificates \
- && cp /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
+ && cp /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone \
+ # 精简镜像：本应用是纯 JS + 调用 ffmpeg，不需要 npm/yarn/corepack
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+           /root/.npm /tmp/*
 
 WORKDIR /app
 COPY fn-hiknvr/app/server/ /app/
