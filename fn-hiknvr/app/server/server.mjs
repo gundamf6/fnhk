@@ -770,7 +770,9 @@ function probeStream(url, ms) {
         if (/401|Unauthorized/i.test(err)) msg = '认证失败：用户名或密码不对（注意区分大小写）\n若确认无误，可能是相机临时锁定了该账号（连续错 7 次会锁约 30 分钟，重启相机可立即解锁）';
         else if (/Connection refused|No route to host|timed out|Could not find codec|Connection timed out/i.test(err)) msg = '连不上：检查 IP / 端口 / 网络';
         else if (/404|Not Found/i.test(err)) msg = '通道不存在：检查通道号';
-        return resolve({ ok: false, error: msg });
+        // 把 ffmpeg 的原话带回去（只留最后几行）——出问题时用户/开发者能直接看到真实原因
+        const detail = err.trim().split('\n').slice(-8).join('\n');
+        return resolve({ ok: false, error: msg, detail });
       }
       resolve({ ok: true, codec, width: wm ? +wm[1] : 0, height: wm ? +wm[2] : 0, audio: hasAudio, h265: /^(hevc|h265)$/.test(codec) });
     });

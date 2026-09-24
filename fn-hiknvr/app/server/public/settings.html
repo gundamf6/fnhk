@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>飞海监控 · 设置</title>
-<link rel="stylesheet" href="style.css?v=0.4.0-5">
+<link rel="stylesheet" href="style.css?v=0.4.0-6">
 <style>
   body{padding:0 0 40px}
   .wrap{max-width:640px;margin:0 auto;padding:14px}
@@ -32,6 +32,9 @@
   #res{margin-top:12px;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
   #res.ok{color:#4ade80}#res.err{color:#f87171}#res.warn{color:#fbbf24}
   .hint{font-size:12px;color:var(--mut,#9fb0cc);margin-top:6px;line-height:1.6}
+  .hint.cmsg{white-space:pre-wrap}
+  .diag{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#93a4bf;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:7px 9px;margin-top:6px;white-space:pre-wrap;word-break:break-all;max-height:150px;overflow:auto}
   .dupwarn{font-size:12px;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:8px;padding:7px 9px;margin-top:8px;line-height:1.6}
   .tip{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a;border-radius:10px;padding:10px;font-size:12.5px;line-height:1.7;margin-top:10px;display:none}
   .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
@@ -275,7 +278,10 @@ $('#cams').addEventListener('click', async e => {
         body: JSON.stringify({ id: cam.id, camera: cam }) })).json();
       const t = s => !s ? '（无）' : (!s.ok ? '✗ ' + (s.error || '失败') : `✓ ${s.codec.toUpperCase()} ${s.width}×${s.height}${s.audio ? ' + 音频' : '（无音频）'}`);
       msg.style.color = r.ok ? (r.h265 ? '#fbbf24' : '#4ade80') : '#f87171';
-      msg.textContent = `主码流：${t(r.main)}\n子码流：${t(r.sub)}`;
+      let out = `主码流：${t(r.main)}\n子码流：${t(r.sub)}`;
+      const det = [r.main && r.main.detail, r.sub && r.sub.detail].filter(Boolean).join('\n');
+      if (det) out += '\n\n—— 诊断详情（ffmpeg 原话，可发给开发者）——\n' + det;
+      msg.textContent = out;
       if (r.h265) { tipEl.style.display = 'block'; tipEl.textContent = '⚠️ ' + r.advice; } else tipEl.style.display = 'none';
     }catch(err){ msg.style.color = '#f87171'; msg.textContent = '✗ 测试失败：' + err.message; }
     finally { btn.disabled = false; }
