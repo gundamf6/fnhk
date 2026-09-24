@@ -14,6 +14,8 @@ import crypto from 'node:crypto';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const CFG_PATH = process.env.NVR_CONF || path.join(__dir, 'config.json');
+// ★ Docker/容器模式：由环境变量 NVR_DOCKER=1 开启（影响默认目录、存储空间枚举、建议目录）
+const DOCKER = String(process.env.NVR_DOCKER || '') === '1';
 const PUB = path.join(__dir, 'public');
 const DATA_ROOT = process.env.NVR_DATA || path.join(__dir, 'data');
 const REC_ROOT = process.env.NVR_REC_ROOT || path.join(DATA_ROOT, 'rec');
@@ -85,7 +87,7 @@ function defaultConfig() {
     ring: { root: path.join(DATA_ROOT, 'ring'), segmentSeconds: 2 },
     motion: { enabled: true, fps: 2, width: 64, height: 48, diffThreshold: 22, changedRatio: 0.03,
               holdSeconds: 8, preRoll: 15, postRoll: 15 },
-    http: { port: Number(process.env.NVR_PORT || 8091), host: '127.0.0.1', user: 'admin', pass: '' },  // 默认只听本机；局域网访问请改 host 并设置口令
+    http: { port: Number(process.env.NVR_PORT || 8091), host: process.env.NVR_HTTP_HOST || '127.0.0.1', user: process.env.NVR_HTTP_USER || 'admin', pass: process.env.NVR_HTTP_PASS || '' },  // 默认只听本机；局域网访问请改 host 并设置口令
     https: { enabled: String(process.env.NVR_HTTPS || 'false') === 'true', port: Number(process.env.NVR_HTTPS_PORT || 8444),
              host: '127.0.0.1', domain: process.env.NVR_DOMAIN || '', certDir: process.env.NVR_CERT_DIR || '' }
   };
@@ -111,6 +113,12 @@ function mergeDefaults(dst, def) {
   return dst;
 }
 cfg = mergeDefaults(cfg, defaultConfig());
+// ★ Docker/容器：这几个环境变量优先于配置文件（方便用 -e 配置监听地址与访问口令）
+if (process.env.NVR_HTTP_HOST) cfg.http.host = process.env.NVR_HTTP_HOST;
+if (process.env.NVR_HTTP_USER) cfg.http.user = process.env.NVR_HTTP_USER;
+if (process.env.NVR_HTTP_PASS) cfg.http.pass = process.env.NVR_HTTP_PASS;
+if (process.env.NVR_RETENTION_DAYS) cfg.record.retentionDays = Math.min(365, Math.max(1, parseInt(process.env.NVR_RETENTION_DAYS) || 3));
+if (process.env.NVR_SEGMENT_SECONDS) cfg.record.segmentSeconds = Math.min(3600, Math.max(60, parseInt(process.env.NVR_SEGMENT_SECONDS) || 300));
 // ---- 老版本(单摄像机 camera)配置迁移 ----
 if (!Array.isArray(cfg.cameras)) {
   const old = cfg.camera || {};
@@ -123,7 +131,7 @@ if (!cfg.http) cfg.http = { port: 8091, host: '127.0.0.1', user: 'admin', pass: 
 // ★ 首次安装的默认录像目录落在隐藏的系统目录（@appshare/@appdata）里，文件管理器看不见 →
 //   换成「剩余空间最大的存储空间」下的可见目录（如 /volX/1000/NVR），用户仍可在设置页改。
 try {
-if (!cfg.record.root || /\/@(appdata|appshare)\//.test(cfg.record.root)) {
+if (!DOCKER && (!cfg.record.root || /\/@(appdata|appshare)\//.test(cfg.record.root))) {
   const sug = suggestRoot(null);
   let ok = false;
   if (sug && insideVolume(sug) && !/\/@(appdata|appshare)\//.test(sug)) {
@@ -149,7 +157,7 @@ syncCameraDirs(cfg.record.root);
 // ⚠️ 也移除了它的补救函数 repairForeignDateDirs()：该函数会把「早于今天」的日期目录搬出摄像机目录
 //    并剥掉文件名前缀 —— 正常运行时会把历史录像搬乱，不能留在启动流程里（补救已完成，不需要再跑）。
 
-const PREFIX = process.env.NVR_PREFIX || '/app/fn-hiknvr';
+const PREFIX = process.env.NVR_PREFIX ?? '/app/fn-hiknvr';
 const APPVER = process.env.NVR_APPVER || '';   // 由 cmd/main 注入，供界面显示版本号
 function refreshPaths() {
   syncCameraDirs(cfg.record.root);
@@ -749,6 +757,15 @@ function probeStream(url, ms) {
 // ---------- 目录浏览（保存目录选择器） ----------
 function volumes() {
   const out = [];
+  if (DOCKER) {
+    // 容器里没有 /volN：用挂载点（默认 /rec 录像、/data 数据），可用 NVR_VOL_ROOTS 覆盖（逗号分隔）
+    for (const p of (process.env.NVR_VOL_ROOTS || '/rec,/data').split(',').map(s => s.trim()).filter(Boolean)) {
+      let total = 0, free = 0;
+      try { const s = fs.statfsSync(p); total = s.blocks * s.bsize; free = s.bavail * s.bsize; } catch { continue; }
+      out.push({ path: p, name: p === '/rec' ? '录像目录' : (p === '/data' ? '数据目录' : p), total, free });
+    }
+    return out;
+  }
   try {
     for (const line of fs.readFileSync('/proc/mounts', 'utf8').split('\n')) {
       const [dev, mnt, fstype] = line.split(' ');
@@ -1078,6 +1095,7 @@ const handler = async (req, res, viaSock) => {
     p = p.slice(PREFIX.length) || '/';
     if (u.pathname === PREFIX) { res.writeHead(302, { Location: PREFIX + '/' + (u.search || '') }); return res.end(); }
   }
+  if (p === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"ok":true}'); }   // 免登录存活探针（供容器健康检查）
   if (!authed(req, viaSock)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="nvr"' });
     return res.end('auth required：未设口令时仅允许本机访问；局域网访问请在 config.json 设置 http.pass');

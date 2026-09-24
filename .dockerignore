@@ -1,0 +1,10 @@
+.git
+.gitignore
+.github
+docker/docker-compose.yml
+**/node_modules
+**/*.fpk
+**/*.tar.gz
+screenshots
+docs
+*.md

@@ -1,0 +1,23 @@
+# 飞海监控 FNHK · Docker Compose 部署
+# 用法：
+#   1) 改下面的 录像目录（左边）为你想存录像的路径，例如 NAS 上的 /volume1/NVR、/vol1/1000/NVR
+#   2) docker compose up -d
+#   3) 浏览器打开 http://NAS的IP:8091  （首次启动的密码看：docker logs fnhk）
+services:
+  fnhk:
+    image: registry.cn-hangzhou.aliyuncs.com/你的命名空间/fnhk:latest   # ← 换成你的镜像地址
+    container_name: fnhk
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      TZ: Asia/Shanghai
+      # 访问口令：不填则首次启动自动生成（看 docker logs fnhk 取）
+      # NVR_HTTP_USER: admin
+      # NVR_HTTP_PASS: 你想设的密码
+      # 录像保留天数 / 单段时长（秒）
+      # NVR_RETENTION_DAYS: "3"
+      # NVR_SEGMENT_SECONDS: "300"
+    volumes:
+      - ./fnhk-data:/data          # 配置 + 运行数据
+      - ./fnhk-rec:/rec            # 录像（建议换成大盘路径，如 /volume1/NVR）
