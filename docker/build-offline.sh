@@ -20,4 +20,4 @@ echo
 echo "离线包已生成：$OUT"
 echo "用户导入（在目标 NAS 上执行）："
 echo "  gunzip -c $OUT | docker load"
-echo "然后： docker run -d --name fnhk -p 8091:8091 -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec --restart unless-stopped $TAG"
+echo "然后： docker run -d --name fnhk -p 8091:8091 -v /vol1/docker/fnhk/data:/data -v /vol1/docker/fnhk/rec:/rec --restart unless-stopped $TAG"

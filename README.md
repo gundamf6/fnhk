@@ -80,11 +80,14 @@ tools/build.sh          # 等价于：cd fn-hiknvr && fnpack build
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
-  -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+  -v /vol1/docker/fnhk/data:/data \
+  -v /vol1/docker/fnhk/rec:/rec \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 
 docker logs fnhk      # 首次启动的访问密码在这里
 ```
+
+> 路径说明：`/vol1` 是飞牛的**第 1 块硬盘（存储空间 1）**，照抄即可（目录会自动创建）。群晖是 `/volume1`、威联通是 `/share/...`，请换成自己机器的路径。录像是大头，建议把第二个 `-v`（`/rec`）指向容量大的盘；装好后也能在「设置 → 保存目录」里随时改。
 
 浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
 
@@ -163,11 +166,12 @@ docker logs fnhk      # 首次启动的访问密码在这里
 
 **新增**
 - 🐳 **Docker 化**：除飞牛 fnOS 外，现在也可以在**群晖 / 威联通 / 极空间 / 绿联 / 树莓派 / 任意 Linux 主机**上运行（镜像**自带 ffmpeg**，不用自己装依赖）
-  - 命令行一键跑：
+  - 命令行一键跑（路径**照抄即可**，会装到第 1 块硬盘；群晖换 `/volume1`）：
     ```bash
     docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
       -e TZ=Asia/Shanghai \
-      -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+      -v /vol1/docker/fnhk/data:/data \
+      -v /vol1/docker/fnhk/rec:/rec \
       ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
     ```
   - 提供 **docker compose** 写法、**离线包**（网络拉不动镜像时用 `docker load` 导入）

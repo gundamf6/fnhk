@@ -9,12 +9,13 @@
 
 ## 第一种安装方式：在线安装（推荐）
 
-一行命令（把 `/你的路径` 换成你自己的盘路径）：
+一行命令（**照抄即可**：`/vol1` 是飞牛的第 1 块硬盘；群晖换 `/volume1`，其它系统换成自己的盘）：
 
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
-  -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+  -v /vol1/docker/fnhk/data:/data \
+  -v /vol1/docker/fnhk/rec:/rec \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 ```
 
@@ -26,7 +27,7 @@ docker logs fnhk
 
 浏览器打开 `http://设备IP:8091`，用户名 `admin`，密码看上一条日志。
 
-**群晖 / 威联通 图形界面**：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → 存储映射「你的目录 → `/data`」「你的录像目录 → `/rec`」→ 环境变量 `TZ=Asia/Shanghai` → 启动。
+**群晖 / 威联通 图形界面**：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → 存储映射「你自己的盘 → `/data`」「你自己的盘 → `/rec`」→ 环境变量 `TZ=Asia/Shanghai` → 启动。
 
 ---
 
@@ -45,8 +46,8 @@ services:
     environment:
       TZ: Asia/Shanghai
     volumes:
-      - ./fnhk-data:/data      # 配置 + 运行数据
-      - ./fnhk-rec:/rec        # 录像（建议换成大盘路径）
+      - /vol1/docker/fnhk/data:/data      # 配置 + 运行数据
+      - /vol1/docker/fnhk/rec:/rec        # 录像（建议换成大盘路径）
 ```
 
 然后：
@@ -56,7 +57,7 @@ docker compose up -d
 docker logs fnhk      # ← 首次启动的访问密码在这里
 ```
 
-> 冒号左边是**你设备上的路径**（随便改，Docker 会自动建目录）；冒号右边 `/data`、`/rec` 是容器内的固定路径，**别改**。
+> 上面左边是宿主机（你 NAS）上的路径，`/vol1` = 飞牛第 1 块硬盘（群晖用 `/volume1`）；目录不存在 Docker 会自动创建。右边 `/data`、`/rec` 是容器内固定路径，**别改**。
 
 ---
 
@@ -71,9 +72,12 @@ cat fnhk-docker-offline-amd64.tar.gz.part-* > fnhk-docker-offline-amd64.tar.gz
 # 导入镜像（导入后镜像名是 fnhk:offline）
 gunzip -c fnhk-docker-offline-amd64.tar.gz | docker load
 
-# 启动（把镜像名换成 fnhk:offline）
+# 启动（把镜像名换成 fnhk:offline；路径照抄即可）
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
-  -e TZ=Asia/Shanghai -v /你的路径/data:/data -v /你的路径/rec:/rec fnhk:offline
+  -e TZ=Asia/Shanghai \
+  -v /vol1/docker/fnhk/data:/data \
+  -v /vol1/docker/fnhk/rec:/rec \
+  fnhk:offline
 
 docker logs fnhk
 ```
