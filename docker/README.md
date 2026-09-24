@@ -9,28 +9,30 @@
 
 ## 第一种安装方式：在线安装（推荐）
 
-一行命令（**飞牛用户照抄即可**，见下方对照表）：
+一行命令（**复制粘贴、回车即可 —— 不用改任何路径**）：
 
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
-  -v /vol1/docker/fnhk/data:/data \
-  -v /vol1/docker/fnhk/rec:/rec \
+  -v fnhk-data:/data \
+  -v fnhk-rec:/rec \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 ```
 
-> ⚠️ **路径对照表**：`/vol1` = 飞牛的**第 1 块硬盘**。**群晖 / 威联通不要直接照抄** —— Docker 不会报错，但会**悄悄建到系统分区**（分区很小、可能被写满，你在文件管理器里也找不到）。
+> 这里用的是 Docker 的**命名卷**（`fnhk-data` / `fnhk-rec`），**存放位置由 Docker 管理** → 飞牛 / 群晖 / 威联通 / 绿联 / 树莓派 / Windows **全平台照抄可跑**，不存在「路径填错」。
+> 查录像存哪：`docker volume inspect fnhk-rec`（看 `Mountpoint`）；群晖一般在 `/volume1/@docker/volumes/fnhk-rec/_data`。
 >
-> | 你的系统 | 把 `/vol1` 换成 |
+> 💡 **想把录像直接放到自己的硬盘 / 共享文件夹**（方便在文件管理器里看、拷）：把 `-v fnhk-rec:/rec` 一行换成——
+>
+> | 系统 | 换成 |
 > |---|---|
-> | 飞牛 fnOS | `/vol1`（照抄） |
-> | 群晖 DSM | `/volume1` |
-> | 威联通 QTS | `/share/CACHEDEV1_DATA` |
-> | 绿联 / 极空间 / 其它国产 NAS | `/volume1`，没有就用文件管理器里那块盘的路径 |
-> | 树莓派 / Linux | `/opt` 或 `/home/你的用户名` |
-> | Windows Docker Desktop | 用命名卷：`-v fnhk-data:/data -v fnhk-rec:/rec` |
+> | 飞牛 fnOS | `-v /vol1/docker/fnhk/rec:/rec` |
+> | 群晖 DSM | `-v /volume1/docker/fnhk/rec:/rec` |
+> | 威联通 QTS | `-v /share/CACHEDEV1_DATA/docker/fnhk/rec:/rec` |
+> | 绿联 / 极空间 / 其它国产 NAS | `-v /volume1/docker/fnhk/rec:/rec` |
+> | 树莓派 / Linux | `-v /opt/fnhk/rec:/rec` |
 >
-> **录像是大头**，建议把第二个 `-v`（`/rec`）指向容量大的盘；装好也能在「设置 → 保存目录」里改。
+> 目录不存在会**自动创建**；左边随便换，右边 `/rec` **不能改**。
 
 取首次启动的访问密码：
 
@@ -40,7 +42,7 @@ docker logs fnhk
 
 浏览器打开 `http://设备IP:8091`，用户名 `admin`，密码看上一条日志。
 
-**群晖 / 威联通 图形界面**：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → 存储映射「你自己的盘 → `/data`」「你自己的盘 → `/rec`」→ 环境变量 `TZ=Asia/Shanghai` → 启动。
+**群晖 / 威联通 图形界面**（推荐，全程不用打路径）：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → **存储：加两个「卷」**，名称 `fnhk-data` 挂 `/data`、`fnhk-rec` 挂 `/rec`（也可在界面上直接选自己的文件夹挂到 `/rec`）→ 环境变量 `TZ=Asia/Shanghai` → 启动。
 
 ---
 
@@ -59,8 +61,12 @@ services:
     environment:
       TZ: Asia/Shanghai
     volumes:
-      - /vol1/docker/fnhk/data:/data      # 配置 + 运行数据
-      - /vol1/docker/fnhk/rec:/rec        # 录像（建议换成大盘路径）
+      - fnhk-data:/data      # 配置 + 运行数据（命名卷）
+      - fnhk-rec:/rec        # 录像（命名卷；想放自己的盘见上方对照表）
+
+volumes:
+  fnhk-data:
+  fnhk-rec:
 ```
 
 然后：
@@ -70,7 +76,7 @@ docker compose up -d
 docker logs fnhk      # ← 首次启动的访问密码在这里
 ```
 
-> 上面左边是宿主机（你 NAS）上的路径（按上表换）；目录不存在 Docker 会自动创建。右边 `/data`、`/rec` 是容器内固定路径，**别改**。
+> 命名卷不用改路径，任何系统直接跑。右边 `/data`、`/rec` 是容器内固定路径，**别改**。
 
 ---
 
@@ -85,11 +91,11 @@ cat fnhk-docker-offline-amd64.tar.gz.part-* > fnhk-docker-offline-amd64.tar.gz
 # 导入镜像（导入后镜像名是 fnhk:offline）
 gunzip -c fnhk-docker-offline-amd64.tar.gz | docker load
 
-# 启动（把镜像名换成 fnhk:offline；路径照抄即可）
+# 启动（把镜像名换成 fnhk:offline；不用改任何路径）
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
-  -v /vol1/docker/fnhk/data:/data \
-  -v /vol1/docker/fnhk/rec:/rec \
+  -v fnhk-data:/data \
+  -v fnhk-rec:/rec \
   fnhk:offline
 
 docker logs fnhk

@@ -80,14 +80,16 @@ tools/build.sh          # 等价于：cd fn-hiknvr && fnpack build
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
-  -v /vol1/docker/fnhk/data:/data \
-  -v /vol1/docker/fnhk/rec:/rec \
+  -v fnhk-data:/data \
+  -v fnhk-rec:/rec \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 
 docker logs fnhk      # 首次启动的访问密码在这里
 ```
 
-> ⚠️ **路径别乱抄**：`/vol1` = 飞牛的**第 1 块硬盘**，飞牛用户照抄即可（自动创建）。**群晖 / 威联通不要直接照抄 `/vol1`** —— Docker 不报错，但会**悄悄建到系统分区**（分区很小、可能写满且难找）。对照表：群晖 `/volume1`｜威联通 `/share/CACHEDEV1_DATA`｜绿联/极空间 `/volume1`｜树莓派/Linux `/opt`｜Windows Docker Desktop 用命名卷 `-v fnhk-data:/data -v fnhk-rec:/rec`。**录像建议放大盘**；装好也能在「设置 → 保存目录」里改。
+> **不用改任何路径**：上面用的是 Docker **命名卷**（存放位置 Docker 自己管）→ 飞牛 / 群晖 / 威联通 / 树莓派 / Windows **全平台照抄可跑**。查录像位置：`docker volume inspect fnhk-rec`。
+> 💡 想把录像直接放到自己的盘/共享文件夹：把 `-v fnhk-rec:/rec` 换成（目录自动创建，右边 `/rec` 不能改）：飞牛 `-v /vol1/docker/fnhk/rec:/rec`｜群晖 `-v /volume1/docker/fnhk/rec:/rec`｜威联通 `-v /share/CACHEDEV1_DATA/docker/fnhk/rec:/rec`｜树莓派/Linux `-v /opt/fnhk/rec:/rec`。
+> ⚠️ **群晖/威联通不要直接照抄 `/vol1`** —— Docker 不会报错，但会**悄悄把目录建到系统分区**（分区小、可能写满、文件管理器里找不到）。
 
 浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
 
@@ -166,14 +168,15 @@ docker logs fnhk      # 首次启动的访问密码在这里
 
 **新增**
 - 🐳 **Docker 化**：除飞牛 fnOS 外，现在也可以在**群晖 / 威联通 / 极空间 / 绿联 / 树莓派 / 任意 Linux 主机**上运行（镜像**自带 ffmpeg**，不用自己装依赖）
-  - 命令行一键跑（路径**照抄即可**，会装到第 1 块硬盘；群晖换 `/volume1`）：
+  - 命令行一键跑（**复制粘贴即可，不用改路径**）：
     ```bash
     docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
       -e TZ=Asia/Shanghai \
-      -v /vol1/docker/fnhk/data:/data \
-      -v /vol1/docker/fnhk/rec:/rec \
+      -v fnhk-data:/data \
+      -v fnhk-rec:/rec \
       ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
     ```
+    （命名卷，全平台通用；想把录像放到自己的盘见 `docker/README.md` 里的对照表）
   - 提供 **docker compose** 写法、**离线包**（网络拉不动镜像时用 `docker load` 导入）
   - 支持 **环境变量**配置：`NVR_HTTP_USER` / `NVR_HTTP_PASS` / `NVR_PORT` / `NVR_RETENTION_DAYS` / `NVR_SEGMENT_SECONDS` 等
   - 首次启动**自动生成访问口令**并打印在 `docker logs` 里
