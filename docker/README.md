@@ -108,3 +108,17 @@ docker compose pull && docker compose up -d
 
 **Q：手机看监控卡？**
 界面里可切换主/子码流，宫格预览默认走子码流，单画面走主码流。
+
+---
+
+## 六、开发者：怎么发布新镜像
+
+1. 推送到 GitHub 触发 CI（`.github/workflows/docker.yml`）：CI 只编译，产出 `fnhk-docker-offline-amd64.tar.gz`（超 100MB 自动分卷）供离线安装
+2. 在国内机器上用 `docker/push.sh` 推到镜像仓库（GitHub 机房在海外，跨境推送很慢，所以不在 CI 里推）：
+   ```bash
+   # 本地起构建也可：docker build -t fnhk:offline .
+   # 然后用 crane + skopeo 推送（会自动把未压缩的层重新压成 gzip）
+   crane auth login ccr.ccs.tencentyun.com -u <账号ID> -p <密码>
+   docker/push.sh ./fnhk-docker-offline-amd64.tar.gz ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
+   ```
+3. 若勾选 CI 里的 `push_registry=true`，CI 会自己构建多架构（amd64+arm64）并推送（需配好 Secrets，且跨境推送较慢）
