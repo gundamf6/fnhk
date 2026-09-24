@@ -3,9 +3,34 @@
 在任意支持 Docker 的设备上跑「飞海监控」（群晖 / 威联通 / 极空间 / 绿联 / 树莓派 / Linux 主机 / Windows Docker Desktop 都可以）。
 镜像**自带 ffmpeg**，不用自己装依赖。
 
+> 飞牛 fnOS 用户见文末「特别说明」，直接用 `fn-hiknvr-x.y.z.fpk` 安装，不需要看本文档。
+
 ---
 
-## 一、最快方式（compose）
+## 第一种安装方式：在线安装（推荐）
+
+一行命令（把 `/你的路径` 换成你自己的盘路径）：
+
+```bash
+docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
+  -e TZ=Asia/Shanghai \
+  -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+  ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
+```
+
+取首次启动的访问密码：
+
+```bash
+docker logs fnhk
+```
+
+浏览器打开 `http://设备IP:8091`，用户名 `admin`，密码看上一条日志。
+
+**群晖 / 威联通 图形界面**：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → 存储映射「你的目录 → `/data`」「你的录像目录 → `/rec`」→ 环境变量 `TZ=Asia/Shanghai` → 启动。
+
+---
+
+## 第二种安装方式：docker compose
 
 新建一个文件夹，放 `docker-compose.yml`：
 
@@ -31,28 +56,11 @@ docker compose up -d
 docker logs fnhk      # ← 首次启动的访问密码在这里
 ```
 
-浏览器打开 `http://设备IP:8091`，用户名 `admin`，密码看日志。
-
----
-
-## 二、不想写 compose？两条命令
-
-```bash
-docker run -d --name fnhk --restart unless-stopped \
-  -p 8091:8091 \
-  -e TZ=Asia/Shanghai \
-  -v /你的路径/fnhk-data:/data \
-  -v /你的路径/fnhk-rec:/rec \
-  ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
-
-docker logs fnhk      # 取首次启动密码
-```
-
 > 冒号左边是**你设备上的路径**（随便改，Docker 会自动建目录）；冒号右边 `/data`、`/rec` 是容器内的固定路径，**别改**。
 
 ---
 
-## 三、离线安装（完全不用联网拉镜像）
+## 第三种安装方式：离线安装（完全不用联网拉镜像）
 
 适合拉不动镜像的网络环境。下载 `fnhk-docker-offline-amd64.tar.gz`（若超过 100MB 会分成 `part-00`、`part-01`…），上传到设备后：
 
@@ -72,7 +80,13 @@ docker logs fnhk
 
 ---
 
-## 四、环境变量
+## 特别说明：飞牛 fnOS 用户怎么安装
+
+飞牛用户**不需要**用上面的 Docker 方式：到 Releases 下载 **`fn-hiknvr-x.y.z.fpk`**，在飞牛「**应用中心 → 手动安装**」里选择该文件即可，配置方式与以前版本完全一样。
+
+---
+
+## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -90,7 +104,7 @@ docker logs fnhk
 
 ---
 
-## 五、常见问题
+## 常见问题
 
 **Q：忘了密码？**
 改 `docker-compose.yml`，加一行 `NVR_HTTP_PASS: 你的新密码`，然后 `docker compose up -d` 重建容器即可。
@@ -111,7 +125,7 @@ docker compose pull && docker compose up -d
 
 ---
 
-## 六、开发者：怎么发布新镜像
+## 开发者：怎么发布新镜像
 
 1. 推送到 GitHub 触发 CI（`.github/workflows/docker.yml`）：CI 只编译，产出 `fnhk-docker-offline-amd64.tar.gz`（超 100MB 自动分卷）供离线安装
 2. 在国内机器上用 `docker/push.sh` 推到镜像仓库（GitHub 机房在海外，跨境推送很慢，所以不在 CI 里推）：
