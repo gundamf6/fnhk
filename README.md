@@ -95,6 +95,8 @@ docker logs fnhk      # 首次启动的访问密码在这里
 
 浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
 
+> 💡 **请用 Chrome 打开**：Docker 版**没有桌面图标**，只能浏览器访问；实测 **Chrome 正常**，**部分手机自带浏览器（如荣耀）回放会黑屏** → 换 Chrome 即可。
+
 - 当前镜像为 **amd64**（绝大多数 NAS / 主机都是 x86_64）；**arm64** 可按需再出（见 `docker/README.md`）
 - 完整部署说明（compose 写法、环境变量、离线包安装、常见问题）见 **[`docker/README.md`](https://gitee.com/ypopenclaw/fnhk/blob/master/docker/README.md)**
 - 离线安装（网络拉不动镜像时）：从 Releases 下载 `fnhk-docker-offline-amd64.tar.gz(.part-*)`，`docker load` 导入即可，详见 `docker/README.md`
