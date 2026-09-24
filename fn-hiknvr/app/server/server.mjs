@@ -1118,9 +1118,19 @@ async function listRecordings(camDirFilter) {
   out.sort((a, b) => b.start - a.start); return out;
 }
 
+// 容器里探不到 NAS 的局域网 IP；用户第一次用浏览器打开时，用 Host 头把"真实访问地址"打进日志（只打一次）
+const seenHosts = new Set();
+function noteAccessHost(req) {
+  const h = String(req.headers.host || '');
+  if (!DOCKER || !h || seenHosts.has(h) || seenHosts.size >= 10) return;
+  seenHosts.add(h);
+  const rip = String(req.socket && req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  log(`[http] 访问地址 http://${h}${rip && rip !== '::1' && rip !== '127.0.0.1' ? `（来自 ${rip}）` : ''}`);
+}
 const handler = async (req, res, viaSock) => {
   const u = new URL(req.url, 'http://x');
   let p = u.pathname;
+  noteAccessHost(req);
   if (PREFIX && (p === PREFIX || p.startsWith(PREFIX + '/'))) {
     p = p.slice(PREFIX.length) || '/';
     if (u.pathname === PREFIX) { res.writeHead(302, { Location: PREFIX + '/' + (u.search || '') }); return res.end(); }
@@ -1430,7 +1440,41 @@ pruneSnaps();
 setInterval(pruneSnaps, 3600000);
 migrateNames();
 startAll();
+function lanIPv4() {
+  const out = [];
+  try {
+    for (const addrs of Object.values(os.networkInterfaces())) {
+      for (const a of addrs || []) {
+        if (!a || a.family !== 'IPv4' || a.internal) continue;
+        const ip = a.address;
+        if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) continue;   // Docker 默认网段：容器自己的 IP，打印出来只会误导用户
+        if (/^169\.254\./.test(ip)) continue;                  // 保留地址
+        out.push(ip);
+      }
+    }
+  } catch {}
+  return out;
+}
+// 启动后打印一段人话信息：访问地址（本机真实 IP，不是 0.0.0.0）+ 用户名 + 当前口令
+function announceAccess() {
+  if (!DOCKER) return;
+  const port = cfg.http.port;
+  const ips = lanIPv4();
+  const urls = ips.length ? ips.map(i => `http://${i}:${port}`).join('  ·  ') : `http://<这台NAS的IP>:${port}`;
+  const user = cfg.http.user || 'admin', pass = cfg.http.pass || '';
+  log('==============================================================');
+  log(` 飞海监控 已启动    访问地址：${urls}`);
+  if (pass) {
+    log(` 用户名：${user}    密码：${pass}${isDefaultPass() ? '   ← 默认口令，建议在「设置 → 🔑 访问口令」里改掉' : ''}`);
+    if (!isDefaultPass()) log(' （已经是你自己改过的口令；忘了就加 -e NVR_HTTP_PASS=新密码 重建容器）');
+  } else {
+    log(' 未设置访问口令（仅限本机访问）；局域网访问请设 NVR_HTTP_PASS');
+  }
+  log('==============================================================');
+  if (!ips.length) log(' （容器看不到 NAS 的局域网 IP，用你 NAS 的地址访问即可；打开网页后这里会打印真实地址）');
+}
+
 httpServer.on('error', e => log('[http] 监听失败', e.message));
-httpServer.listen(cfg.http.port, cfg.http.host, () => log(`[main] http://${cfg.http.host}:${cfg.http.port}  cameras=${cfg.cameras.length}  rec=${cfg.record.root}`));
+httpServer.listen(cfg.http.port, cfg.http.host, () => { log(`[main] http://${cfg.http.host}:${cfg.http.port}  cameras=${cfg.cameras.length}  rec=${cfg.record.root}`); announceAccess(); });
 if (httpsServer) httpsServer.listen(cfg.https.port, cfg.https.host || '0.0.0.0', () =>
   log(`[main] https://${cfg.https.host || '0.0.0.0'}:${cfg.https.port}`));

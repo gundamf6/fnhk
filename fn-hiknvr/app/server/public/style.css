@@ -130,3 +130,7 @@ video{object-fit:contain}
   background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a}
 .pwnag a{color:#fde68a;font-weight:600}
 .pwnag.hidden{display:none}
+
+/* v0.4.x: 深色主题下的原生下拉框 —— 不设这两条，Windows/安卓上"选项列表"会白底白字，用户看不见 */
+select{color-scheme:dark}
+select option{background:#111a2b;color:#e6ecf7}
