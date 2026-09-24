@@ -77,6 +77,8 @@ tools/build.sh          # 等价于：cd fn-hiknvr && fnpack build
 
 不在飞牛上也能用！镜像**自带 ffmpeg**，两条命令即可跑起来：
 
+> 🔴 **群晖用户先看**：群晖防火墙默认丢弃 Docker 的 `172.17.x` 网段 → 容器「完全没网」（网页能开，但加摄像机 / 拉流全部超时）。解决：**把 `-p 8091:8091` 换成 `--network host`**（不用改防火墙）。详见 [`docker/README.md`](https://gitee.com/ypopenclaw/fnhk/blob/master/docker/README.md) 的「特别说明：群晖 / 开了防火墙的 NAS」。
+
 ```bash
 docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   -e TZ=Asia/Shanghai \
@@ -87,14 +89,14 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
 docker logs fnhk      # 首次启动的访问密码在这里
 ```
 
-> **不用改任何路径**：上面用的是 Docker **命名卷**（存放位置 Docker 自己管）→ 飞牛 / 群晖 / 威联通 / 树莓派 / Windows **全平台照抄可跑**。查录像位置：`docker volume inspect fnhk-rec`。
-> 💡 想把录像直接放到自己的盘/共享文件夹：把 `-v fnhk-rec:/rec` 换成（目录自动创建，右边 `/rec` 不能改）：飞牛 `-v /vol1/docker/fnhk/rec:/rec`｜群晖 `-v /volume1/docker/fnhk/rec:/rec`｜威联通 `-v /share/CACHEDEV1_DATA/docker/fnhk/rec:/rec`｜树莓派/Linux `-v /opt/fnhk/rec:/rec`。
-> ⚠️ **群晖/威联通不要直接照抄 `/vol1`** —— Docker 不会报错，但会**悄悄把目录建到系统分区**（分区小、可能写满、文件管理器里找不到）。
+> **不用改任何路径**：上面用的是 Docker **命名卷**（存放位置 Docker 自己管、自动创建）→ 飞牛 / 威联通 / 树莓派 / Windows 等**照抄可跑**（★ 群晖例外，网络要改用 `--network host`，见上文红字）。查录像位置：`docker volume inspect fnhk-rec`。
+> 💡 想把录像直接放到自己的盘/共享文件夹：**先在文件管理器里把目录建好**，再把 `-v fnhk-rec:/rec` 换成（右边 `/rec` 不能改；⚠️ 部分系统如群晖**目录不存在不会自动建**，会报 `Bind mount failed`）：飞牛 `-v /vol1/docker/fnhk/rec:/rec`｜群晖 `-v /volume1/docker/fnhk/rec:/rec`｜威联通 `-v /share/CACHEDEV1_DATA/docker/fnhk/rec:/rec`｜树莓派/Linux `-v /opt/fnhk/rec:/rec`。
+> ⚠️ 别把宿主路径写成别的系统的（例如在群晖上照抄 `/vol1`）—— 路径对不上会报错或建到意外位置，按上表选你系统那一行。
 
 浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
 
 - 当前镜像为 **amd64**（绝大多数 NAS / 主机都是 x86_64）；**arm64** 可按需再出（见 `docker/README.md`）
-- 完整部署说明（compose 写法、环境变量、离线包安装、常见问题）见 **[`docker/README.md`](docker/README.md)**
+- 完整部署说明（compose 写法、环境变量、离线包安装、常见问题）见 **[`docker/README.md`](https://gitee.com/ypopenclaw/fnhk/blob/master/docker/README.md)**
 - 离线安装（网络拉不动镜像时）：从 Releases 下载 `fnhk-docker-offline-amd64.tar.gz(.part-*)`，`docker load` 导入即可，详见 `docker/README.md`
 
 ## ⚙️ 首次配置
@@ -179,12 +181,12 @@ docker logs fnhk      # 首次启动的访问密码在这里
     （命名卷，全平台通用；想把录像放到自己的盘见 `docker/README.md` 里的对照表）
   - 提供 **docker compose** 写法、**离线包**（网络拉不动镜像时用 `docker load` 导入）
   - 支持 **环境变量**配置：`NVR_HTTP_USER` / `NVR_HTTP_PASS` / `NVR_PORT` / `NVR_RETENTION_DAYS` / `NVR_SEGMENT_SECONDS` 等
-  - 首次启动**自动生成访问口令**并打印在 `docker logs` 里
+  - 首次启动使用默认口令 **`admin` / `admin`**（容器日志会打印访问地址与口令），登录后在「设置 → 🔑 访问口令」可自行修改
   - 完整说明见 [`docker/README.md`](https://gitee.com/ypopenclaw/fnhk/blob/master/docker/README.md)
 - 🩺 新增 **`/healthz`** 健康检查接口（容器 HEALTHCHECK 用，也可给反向代理探活）
 
 **安全**
-- 保持原有策略：**不设访问口令时只监听本机**；Docker 下默认监听 `0.0.0.0` 但首启必生成口令
+- 保持原有策略：**不设访问口令时只监听本机**；Docker 下默认监听 `0.0.0.0` 并使用默认口令 `admin/admin`（首启写入配置，可在网页里改）
 
 ### v0.3.0 —— 多品牌适配 + ONVIF 自动发现
 
@@ -263,6 +265,6 @@ tools/build.sh
 
 ## 📄 许可
 
-[MIT](LICENSE)
+[MIT](https://gitee.com/ypopenclaw/fnhk/blob/master/LICENSE)
 
 随包或运行时若使用 **ffmpeg**，其版权归 FFmpeg 项目所有，遵循 LGPL/GPL（取决于编译选项），本项目通过**子进程调用**方式使用，不链接其库。
