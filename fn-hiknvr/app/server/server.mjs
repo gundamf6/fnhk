@@ -224,6 +224,12 @@ const stamp = ms => { const d = new Date(ms); return `${d.getFullYear()}${two(d.
 function killP(proc) { try { proc?.kill('SIGTERM'); } catch {} }
 function killHard(proc) { const pid = proc?.pid; killP(proc); if (pid) setTimeout(() => { try { process.kill(pid, 'SIGKILL'); } catch {} }, 5000); }
 
+// ★ 记录本进程拉起的 ffmpeg 子进程 pid。
+// 容器里 node 就是 PID 1，它拉起的子进程 ppid 也等于 1 → reapOrphans 只看 ppid==1 时
+// 会把自己正在拉流的管线当成「孤儿」杀掉（每 60 秒一次，录像每分钟断几秒）。
+const CHILD_PIDS = new Set();
+function trackChild(p) { try { if (p && p.pid) { CHILD_PIDS.add(p.pid); p.once('exit', () => CHILD_PIDS.delete(p.pid)); } } catch {} return p; }
+
 // ---------- 主码流管线：一次拉流 → ① 连续录像 ② 事件环形 ③ HLS 直播（3 路输出）----------
 // 海康只允许 3 路并发 RTSP 会话；main 拉 1 路复制成 3 输出、motion 走子码流 = 每台 2 路会话。
 // ---------- 拉流重试退避 + 告警降噪 ----------
@@ -309,11 +315,17 @@ function startMain(cam) {
     '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
     '-hls_segment_filename', path.join(LIVE, 'seg%d.ts'), path.join(LIVE, 'index.m3u8')];
   if (!s.mainFails) log(`[main:${cam.dir}] start -> ${ymdOf(new Date())}/${halfOf(new Date())}`);
-  const p = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const p = trackChild(spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] }));
   s.mainProc = p; s.mainStart = Date.now();
   p.stderr.on('data', d => logStderr(s, `main:${cam.dir}`, d.toString()));
   p.on('exit', () => { s.mainProc = null;
     if (shuttingDown || !cfg.record.enabled || !cfg.cameras.includes(cam)) { s.mainDelay = 0; s.mainFails = 0; return; }
+    if (s.mainPlanned) {                     // 计划内重启（切目录）→ 立即恢复，不计入失败次数
+      s.mainPlanned = false; s.mainDelay = 0; s.mainFails = 0;
+      log(`[main:${cam.dir}] 计划内重启（切换目录），立即恢复`);
+      setTimeout(() => startMain(cam), 200);
+      return;
+    }
     const delay = nextRetryDelay(s, 'main', RETRY_BASE_MAIN);
     retryLog(s, 'main', `main:${cam.dir}`, delay);
     setTimeout(() => startMain(cam), delay); });
@@ -329,7 +341,8 @@ setInterval(() => {
     if (s.recDir && want !== s.recDir) {
       log(`[main:${cam.dir}] 切换目录 ->`, path.relative(recDirOf(cam), want));
       s.recDir = want;
-      if (s.mainProc) killP(s.mainProc); else startMain(cam);
+      // ★ 计划内退出：让退出处理器立即重启（不等 5 秒退避），跨小时/跨天切换只留极小空档
+      if (s.mainProc) { s.mainPlanned = true; killP(s.mainProc); } else startMain(cam);
     }
   }
 }, 30000);
@@ -350,7 +363,7 @@ function startMotion(cam) {
     '-hls_segment_filename', path.join(LIVE, 'sub%d.ts'), path.join(LIVE, 'index-sub.m3u8'),
     '-map', '0:v', '-vf', `fps=${fps},scale=${W}:${H},format=gray`, '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'];
   if (!s.motionFails) log(`[motion:${cam.dir}] start (${W}x${H}@${fps}fps)`);
-  const p = spawn(FFMPEG, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = trackChild(spawn(FFMPEG, args, { stdio: ['ignore', 'pipe', 'pipe'] }));
   s.motionProc = p; s.motionStart = Date.now();
   let buf = Buffer.alloc(0);
   p.stdout.on('data', chunk => {
@@ -434,8 +447,8 @@ async function assembleClip(cam, fromMs, toMs) {
   const outName = `${cam.dir}-${stamp(toMs)}-E.mp4`;
   await fsp.writeFile(listPath, files.map(f => `file '${path.join(RING, f)}'`).join('\n') + '\n');
   await new Promise(res => {
-    const p = spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listPath,
-      '-c', 'copy', '-movflags', '+faststart', '-y', path.join(outDir, outName)], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = trackChild(spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-c', 'copy', '-movflags', '+faststart', '-y', path.join(outDir, outName)], { stdio: ['ignore', 'ignore', 'pipe'] }));
     p.stderr.on('data', d => log('[event]', d.toString().trim()));
     p.on('exit', () => res());
   });
@@ -467,7 +480,7 @@ async function snapshot(cam, opts = {}) {
     const fin = () => { try { if (fs.existsSync(tmp) && fs.statSync(tmp).size > 0) fs.renameSync(tmp, out); } catch {} res(); };
     const rtsp = /^rtsp:\/\//i.test(src);
     const args = ['-hide_banner', '-loglevel', 'error', ...(rtsp ? ['-rtsp_transport', 'tcp'] : []), '-i', src, '-frames:v', '1', ...vf, '-f', 'image2', '-q:v', '4', '-y', tmp];
-    const p = spawn(FFMPEG, args, { stdio: 'ignore' });
+    const p = trackChild(spawn(FFMPEG, args, { stdio: 'ignore' }));
     p.on('exit', fin); p.on('error', fin);
     setTimeout(() => { try { p.kill(); } catch {} fin(); }, 8000);
   });
@@ -622,6 +635,9 @@ function reapOrphans() {
     let ppid = -1;
     try { const s = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); const r = s.lastIndexOf(')'); ppid = +s.slice(r + 2).split(' ')[1]; } catch { continue; }
     if (ppid !== 1) continue;
+    // ★ 容器里本进程就是 PID 1 → 自己拉起的子进程 ppid 同样是 1，必须按 pid 白名单排除，
+    //   否则每 60 秒会把正在拉流的管线当孤儿杀掉（表现为「每分钟断一次、约 5 秒空档」）。
+    if (CHILD_PIDS.has(pid)) continue;
     const c = _cmdline(pid);
     if (!/^\S*ffmpeg\b/.test(c)) continue;
     // 判据收紧：必须引用本应用的数据目录（live/ring 输出），避免误杀用户或其它应用拉同一台摄像头的 ffmpeg
@@ -673,7 +689,7 @@ async function migrateFaststart() {
       const { bytesRead } = await fh.read(head, 0, 65536, 0); await fh.close();
       if (!head.subarray(0, bytesRead).includes(Buffer.from('moof'))) continue;
       const tmp = fp + '.tmp.mp4';
-      await new Promise(res => { const p = spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-i', fp, '-c', 'copy', '-movflags', '+faststart', '-y', tmp], { stdio: ['ignore', 'ignore', 'pipe'] }); p.stderr.on('data', d => log('[migrate]', d.toString().trim())); p.on('exit', () => res()); });
+      await new Promise(res => { const p = trackChild(spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-i', fp, '-c', 'copy', '-movflags', '+faststart', '-y', tmp], { stdio: ['ignore', 'ignore', 'pipe'] })); p.stderr.on('data', d => log('[migrate]', d.toString().trim())); p.on('exit', () => res()); });
       if (fs.existsSync(tmp) && fs.statSync(tmp).size > 1024) { await fsp.rename(tmp, fp); n++; } else { await fsp.unlink(tmp).catch(() => {}); }
     } catch {}
   }
@@ -756,7 +772,7 @@ function probeStream(url, ms) {
     if (!url) return resolve({ ok: false, error: '未填写摄像机地址' });
     const args = ['-hide_banner', '-rtsp_transport', 'tcp', '-timeout', '8000000', '-i', url, '-t', '0.5', '-f', 'null', '-'];
     let err = '';
-    const p = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = trackChild(spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] }));
     const to = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, ms || 15000);
     p.stderr.on('data', d => err += d.toString());
     p.on('exit', () => {
