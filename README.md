@@ -62,7 +62,7 @@
 
 ### 方式一：下载 fpk 安装（推荐）
 
-1. 到 **[Releases（发行版）](https://gitee.com/ypopenclaw/fnhk/releases)** 下载 `fn-hiknvr-x.y.z.fpk`（最新版：`fn-hiknvr-0.3.0.fpk`）
+1. 到 **[Releases（发行版）](https://gitee.com/ypopenclaw/fnhk/releases)** 下载 `fn-hiknvr-x.y.z.fpk`（最新版：`fn-hiknvr-0.4.0.fpk`）
 2. 飞牛「应用中心 → 手动安装」，选择该 fpk
 
 ### 方式二：自己打包
@@ -159,7 +159,27 @@ docker logs fnhk      # 首次启动的访问密码在这里
 
 ## 📝 更新日志
 
-### v0.3.0（最新）—— 多品牌适配 + ONVIF 自动发现
+### v0.4.0（最新）—— 新增 Docker 部署支持
+
+**新增**
+- 🐳 **Docker 化**：除飞牛 fnOS 外，现在也可以在**群晖 / 威联通 / 极空间 / 绿联 / 树莓派 / 任意 Linux 主机**上运行（镜像**自带 ffmpeg**，不用自己装依赖）
+  - 命令行一键跑：
+    ```bash
+    docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
+      -e TZ=Asia/Shanghai \
+      -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+      ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
+    ```
+  - 提供 **docker compose** 写法、**离线包**（网络拉不动镜像时用 `docker load` 导入）
+  - 支持 **环境变量**配置：`NVR_HTTP_USER` / `NVR_HTTP_PASS` / `NVR_PORT` / `NVR_RETENTION_DAYS` / `NVR_SEGMENT_SECONDS` 等
+  - 首次启动**自动生成访问口令**并打印在 `docker logs` 里
+  - 完整说明见 [`docker/README.md`](https://gitee.com/ypopenclaw/fnhk/blob/master/docker/README.md)
+- 🩺 新增 **`/healthz`** 健康检查接口（容器 HEALTHCHECK 用，也可给反向代理探活）
+
+**安全**
+- 保持原有策略：**不设访问口令时只监听本机**；Docker 下默认监听 `0.0.0.0` 但首启必生成口令
+
+### v0.3.0 —— 多品牌适配 + ONVIF 自动发现
 
 **新增功能**
 - 🧩 **多品牌支持**：内置 **海康威视 / 大华 / 宇视 / TP-LINK** 的 RTSP 地址模板，选品牌 + 通道号即可自动拼出主/子码流地址（不用自己查 RTSP 路径）；新增「**自定义 RTSP**」—— 直接填主/子码流地址（任意品牌、任意端口/路径都行；子码流可留空 = 只拉主码流）
