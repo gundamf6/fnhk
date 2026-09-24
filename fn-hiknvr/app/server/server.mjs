@@ -686,7 +686,30 @@ setTimeout(() => { sweepBrokenTails().catch(e => log('[sweep] 失败', e.message
 setTimeout(() => { migrateFaststart().catch(e => log('[migrate] 失败', e.message)); }, 8000);
 
 // ---------- 启动 / 重启管线 ----------
+// 录像根目录 + 一份说明文件：让用户装完立刻能在文件管理器里看到一个文件（= 映射成功），也顺带说明目录结构。
+const REC_NOTE = [
+  '飞海监控 · 录像说明',
+  '=====================',
+  '',
+  '这个文件夹是「飞海监控」保存录像的地方，录像会自动按下面的结构生成：',
+  '',
+  '    摄像机名字 / 日期 / 上午|下午 / 时间段 / 录像文件.mp4',
+  '',
+  '· 看到本文件，说明录像目录映射成功。',
+  '· 想让录像换个地方存：改 docker 启动命令里 -v 左边那段路径（或在设置页「保存目录」里改），删掉容器重建即可。',
+  '  摄像机配置存在数据卷里，重建不会丢。',
+  '· 本文件可以删，删了下次启动会重新生成，不影响录像。',
+  ''
+].join('\n');
+function prepareRecRoot() {
+  try {
+    fs.mkdirSync(cfg.record.root, { recursive: true });
+    const note = path.join(cfg.record.root, '录像说明.txt');
+    if (!fs.existsSync(note)) fs.writeFileSync(note, REC_NOTE);
+  } catch (e) { log('[rec] 录像目录准备失败: ' + (e && e.message)); }
+}
 function startAll() {
+  prepareRecRoot();
   for (const cam of cfg.cameras) { startMain(cam); startMotion(cam); }
   log(`[rec] 已启动 ${cfg.cameras.filter(camConfigured).length} 台摄像机的连续+事件录像`);
 }
@@ -758,11 +781,15 @@ function probeStream(url, ms) {
 function volumes() {
   const out = [];
   if (DOCKER) {
-    // 容器里没有 /volN：用挂载点（默认 /rec 录像、/data 数据），可用 NVR_VOL_ROOTS 覆盖（逗号分隔）
-    for (const p of (process.env.NVR_VOL_ROOTS || '/rec,/data').split(',').map(s => s.trim()).filter(Boolean)) {
+    // 容器里没有 /volN：用挂载点（默认 /rec 录像），可用 NVR_VOL_ROOTS 覆盖（逗号分隔）
+    // ★ 数据目录（配置 + 内部缓存 live/ring/snap）不列出来：用户用不上，露出来只会选错。
+    const roots = (process.env.NVR_VOL_ROOTS || '/rec,/data').split(',').map(s => s.trim()).filter(Boolean);
+    const recOnly = roots.filter(p => path.normalize(p) !== path.normalize(DATA_ROOT));
+    for (const p of (recOnly.length ? recOnly : roots)) {
       let total = 0, free = 0;
       try { const s = fs.statfsSync(p); total = s.blocks * s.bsize; free = s.bavail * s.bsize; } catch { continue; }
-      out.push({ path: p, name: p === '/rec' ? '录像目录' : (p === '/data' ? '数据目录' : p), total, free });
+      const isRec = path.normalize(p) === path.normalize(REC_ROOT);
+      out.push({ path: p, name: isRec ? '录像目录（你映射进容器的那个文件夹）' : p, total, free });
     }
     return out;
   }
@@ -785,6 +812,7 @@ function insideVolume(p) {
   return volRoots().some(r => n === r || n.startsWith(r + path.sep));
 }
 function suggestRoot(uid) {
+  if (DOCKER) return REC_ROOT;              // 容器里就是映射进来的那个文件夹，别再往下套一层
   const vols = volumes(); if (!vols.length) return null;
   const best = vols.slice().sort((a, b) => b.free - a.free)[0];
   const cands = [];
@@ -1108,6 +1136,7 @@ const handler = async (req, res, viaSock) => {
         cameras: cfg.cameras.map(camBrief),
         configured: cfg.cameras.some(camConfigured),
         enabled: cfg.record.enabled,
+        docker: DOCKER,
         defaultPass: isDefaultPass(), httpUser: cfg.http.user || '',
         retentionDays: cfg.record.retentionDays, segmentSeconds: cfg.record.segmentSeconds,
         recordRoot: cfg.record.root, disk: diskInfo(), diskLow: diskLow(), res: { cpu: RES.cpu, mem: RES.mem }, serverTime: Date.now(),
@@ -1178,7 +1207,7 @@ const handler = async (req, res, viaSock) => {
           if (cam.brand !== 'custom') { cam.rtspMain = ''; cam.rtspSub = ''; }
         }
         return json(res, { config: c, hasPass, configured: cfg.cameras.some(camConfigured), enabled: cfg.record.enabled,
-          defaultPass: isDefaultPass(), httpUser: cfg.http.user || '',
+          docker: DOCKER, defaultPass: isDefaultPass(), httpUser: cfg.http.user || '',
           volumes: volumes(), suggest: suggestRoot(req.headers['x-trim-userid']) });
       }
       if (req.method === 'PUT') {

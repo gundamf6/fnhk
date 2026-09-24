@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>飞海监控 · 设置</title>
-<link rel="stylesheet" href="style.css?v=0.4.0-3">
+<link rel="stylesheet" href="style.css?v=0.4.0-4">
 <style>
   body{padding:0 0 40px}
   .wrap{max-width:640px;margin:0 auto;padding:14px}
@@ -106,6 +106,7 @@
       <button class="pickbtn" id="pick">选择目录</button>
     </div>
     <div class="hint" id="roothint">录像按「摄像机 / 日期 / 时段」分目录保存。</div>
+    <div class="hint" id="dockerhint" style="display:none">Docker 版：上面的 <code>/rec</code> 就是你启动容器时<b>映射进来的那个文件夹</b>；想换位置就改 docker 命令里 <code>-v</code> 左边那段路径、删掉容器重建（配置在数据卷里，不会丢）。</div>
     <div class="row" style="margin-top:6px">
       <div><label>保留天数</label><input id="retentionDays" inputmode="numeric" placeholder="3"></div>
       <div><label>单段时长（秒）</label><input id="segmentSeconds" inputmode="numeric" placeholder="300"></div>
@@ -143,7 +144,7 @@
     <div class="dlist" id="dlist"></div>
     <div id="mkrow"><input id="mkname" placeholder="新文件夹名字"><button class="mini" id="mkok" style="margin:0">创建</button></div>
     <div class="dfoot"><span id="dmk">＋ 新建文件夹</span><span id="dfree"></span></div>
-    <div class="warnbox">只能选存储空间（硬盘）里的文件夹；系统目录已自动隐藏。</div>
+    <div class="warnbox" id="dwarn">只能选存储空间（硬盘）里的文件夹；系统目录已自动隐藏。</div>
     <div class="dacts">
       <button class="btn ghost" id="dcancel">取消</button>
       <button class="btn" id="dok">选择此目录</button>
@@ -368,7 +369,7 @@ async function navDir(p){
     let html = '';
     // ★ 存储空间（硬盘）列表：任何层级都能一键换盘（修复：以前到盘根就出不去了）
     if (st.volumes && st.volumes.length) {
-      html += '<div class="dgroup">存储空间（点一下切到该硬盘）</div>';
+      html += '<div class="dgroup">' + (st.docker ? '录像存在哪（就是你映射进来的文件夹）' : '存储空间（点一下切到该硬盘）') + '</div>';
       html += st.volumes.map(v => {
         const on = (j.path === v.path || j.path.indexOf(v.path + '/') === 0) ? ' on' : '';
         return `<div class="di vol${on}" data-enter="${esc(v.path)}"><span class="ic">▣</span> ${esc(v.name)}<span class="r">可用 ${fmtGB(v.free)}</span></div>`;
@@ -412,7 +413,11 @@ async function load(){
     st.cameras = (c.cameras && c.cameras.length ? c.cameras : [{ id:'', name:'', ip:'', port:554, user:'', channel:1, brand:'hik', rtspMain:'', rtspSub:'', previewStream:'main' }])
       .map(cam => ({ ...cam, brand: BRAND_LIST.includes(cam.brand) ? cam.brand : 'hik', rtspMain: cam.rtspMain || '', rtspSub: cam.rtspSub || '' }));
     st.hasPass = j.hasPass || {};
-    st.volumes = j.volumes || []; st.suggest = j.suggest || null;
+    st.volumes = j.volumes || []; st.suggest = j.suggest || null; st.docker = !!j.docker;
+    if (st.docker) {
+      $('#dockerhint').style.display = '';
+      $('#dwarn').textContent = '录像会存到这个文件夹里（就是你启动容器时映射进来的那个）；可以在它下面建子文件夹。';
+    }
     st.root = rec.root || '';
     renderCams();
     $('#root').value = st.root;
