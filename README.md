@@ -1,6 +1,6 @@
 # 在 fnOS 平台搭建一套类似群晖 Surveillance Station 的监控管理套件-飞海监控（FNHK）
 
-> 仓库名 **FNHK**｜飞牛应用 ID（包名）：`fn-hiknvr`
+> 仓库名 **FNHK** ｜ 飞牛应用 ID（包名）：`fn-hiknvr`
 
 **在 fnOS 平台搭建一套类似群晖 Surveillance Station 的监控管理套件。**
 
