@@ -5,6 +5,9 @@
 
 > 飞牛 fnOS 用户见文末「特别说明」，直接用 `fn-hiknvr-x.y.z.fpk` 安装，不需要看本文档。
 
+> 🔴 **群晖用户先看这里**：群晖的防火墙默认会把 Docker 的 `172.17.x` 网段全部丢弃 → 容器会「完全没网」（网页能开，但加摄像机、拉流全部超时）。
+> 解决办法：**把 `-p 8091:8091` 换成 `--network host`**（不用改防火墙，启动日志还会直接显示 NAS 的真实 IP）。详见文末「特别说明：群晖 / 开了防火墙的 NAS」。
+
 ---
 
 ## 第一种安装方式：在线安装（推荐）
@@ -59,7 +62,7 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
 docker logs fnhk
 ```
 
-浏览器打开 `http://设备IP:8091`，用户名 `admin`，密码看上一条日志。
+浏览器打开 `http://设备IP:8091`，用户名 `admin`、密码 `admin`（**每次启动都会打印在日志里**；登录后可在「设置 → 🔑 访问口令」改成自己的）。
 
 **群晖 / 威联通 图形界面**（推荐，全程不用打路径）：容器管理里新建容器 → 镜像填 `ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest` → 端口映射 `8091:8091` → **存储：加两个「卷」**，名称 `fnhk-data` 挂 `/data`、`fnhk-rec` 挂 `/rec`（也可在界面上直接选自己的文件夹挂到 `/rec`）→ 环境变量 `TZ=Asia/Shanghai` → 启动。
 
@@ -122,6 +125,34 @@ docker logs fnhk
 
 ---
 
+## 特别说明：群晖 / 开了防火墙的 NAS ★
+
+**症状**：容器能起来、网页能打开、能加摄像机，但「测试连接」永远失败（日志全是 `Operation timed out`）——而且容器里**连外网也不通**。
+
+**原因**：群晖「控制面板 → 安全性 → 防火墙」默认只放行局域网网段（如 `192.168.20.0/24`），**Docker 用的 `172.17.x.x` 网段不在放行范围 → 被全部丢弃**。
+
+**✅ 推荐解法（不碰防火墙）**：把 `-p 8091:8091` 换成 `--network host`：
+
+```bash
+# 先删掉旧容器（配置在 fnhk-data 卷里，不会丢）
+docker rm -f fnhk
+docker run -d --name fnhk --restart unless-stopped --network host \
+  -e TZ=Asia/Shanghai \
+  -v fnhk-data:/data \
+  -v /volume1/docker/NVR:/rec \
+  ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
+```
+
+好处：① 不用改群晖防火墙；② 容器里能看到 NAS 的真实 IP，启动日志直接显示 `http://192.168.20.201:8091`（不再是 `0.0.0.0`）。
+（Container Manager 图形界面里同理：网络选 **host**。）
+
+**备选**：保留 `-p 8091:8091`，去「控制面板 → 安全性 → 防火墙」加一条**允许来源 `172.17.0.0/16`、全部端口**的规则（不推荐：改了系统防火墙，且 DSM 重建规则后可能失效）。
+
+> 另一个常见坑：**「IP 地址」要填摄像机自己的 IP，不是 NAS 的 IP**。
+> 点「测试连接」失败时会附带 **「诊断详情（ffmpeg 原话）」**：`No route to host`=网络不通、`401 Unauthorized`=账号密码不对、`404`=通道号不对。
+
+---
+
 ## 特别说明：飞牛 fnOS 用户怎么安装
 
 飞牛用户**不需要**用上面的 Docker 方式：到 Releases 下载 **`fn-hiknvr-x.y.z.fpk`**，在飞牛「**应用中心 → 手动安装**」里选择该文件即可，配置方式与以前版本完全一样。
@@ -134,7 +165,7 @@ docker logs fnhk
 |---|---|---|
 | `TZ` | `Asia/Shanghai` | 时区（影响录像分目录时间） |
 | `NVR_HTTP_USER` | `admin` | 登录用户名 |
-| `NVR_HTTP_PASS` | 首次启动自动生成 | 登录密码（**设了就以环境变量为准**） |
+| `NVR_HTTP_PASS` | `admin`（首次启动写入配置） | 登录密码；设了就以环境变量为准。**忘了密码就用它重置**（重建容器，配置/录像都不丢） |
 | `NVR_PORT` | `8091` | 服务端口 |
 | `NVR_HTTP_HOST` | `0.0.0.0` | 监听地址（容器内别改） |
 | `NVR_REC_ROOT` | `/rec` | 录像目录（容器内） |
@@ -142,14 +173,17 @@ docker logs fnhk
 | `NVR_RETENTION_DAYS` | `3` | 录像保留天数 |
 | `NVR_SEGMENT_SECONDS` | `300` | 单个录像片段时长（秒） |
 
-> ⚠️ 安全：服务**必须设置访问口令**才会监听对外地址（没口令时只允许本机访问）。首次启动会自动生成一个并打印在日志里，记得改掉或自己用 `NVR_HTTP_PASS` 指定。
+> ⚠️ 安全：开箱是 `admin/admin`（内网用）。**同网段任何设备都能访问**，公网暴露或对安全有要求时，请在「设置 → 🔑 访问口令」改掉，或用 `-e NVR_HTTP_PASS=你的密码` 指定。
 
 ---
 
 ## 常见问题
 
 **Q：忘了密码？**
-改 `docker-compose.yml`，加一行 `NVR_HTTP_PASS: 你的新密码`，然后 `docker compose up -d` 重建容器即可。
+加一个环境变量重建容器即可（配置/录像都不丢）：加 `-e NVR_HTTP_PASS=你的新密码`（compose 里加一行 `NVR_HTTP_PASS: 你的新密码`）后重新 `docker run` / `docker compose up -d`。
+
+**Q：加摄像机提示「连不上：检查 IP / 端口 / 网络」？**
+① IP 有没有填成 NAS 自己的地址；② 群晖是否开了防火墙（见文末「特别说明：群晖」）；③ 点「测试连接」看「诊断详情（ffmpeg 原话）」。
 
 **Q：录像存在哪？**
 容器里是 `/rec`，对应你挂载的宿主机目录。建议挂到大容量硬盘，如 `/volume1/NVR`、`/vol2/1000/NVR`。
@@ -168,6 +202,13 @@ docker compose pull && docker compose up -d
 ---
 
 ## 开发者：怎么发布新镜像
+
+> **首选：在飞牛 NAS 上「本地增量构建」**（不需要 docker 守护进程，也不需要 GitHub，几秒出镜像）：
+> ```bash
+> docker/local-build.sh ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest v0.4.0
+> ```
+> 原理：以现有镜像为底座，把 `fn-hiknvr/app/server/**` + `docker/entrypoint.sh` 打成一层 `crane append` 上去（后层覆盖同名文件）→ 只换程序文件。
+> 改了 ENV / 系统依赖（Dockerfile）时才需要走下面的完整构建。
 
 1. 推送到 GitHub 触发 CI（`.github/workflows/docker.yml`）：CI 只编译，产出 `fnhk-docker-offline-amd64.tar.gz`（超 100MB 自动分卷）供离线安装
 2. 在国内机器上用 `docker/push.sh` 推到镜像仓库（GitHub 机房在海外，跨境推送很慢，所以不在 CI 里推）：

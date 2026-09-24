@@ -1,23 +1,30 @@
 # 飞海监控 FNHK · Docker Compose 部署
 # 用法：
-#   1) 改下面的 录像目录（左边）为你想存录像的路径，例如 NAS 上的 /volume1/NVR、/vol1/1000/NVR
-#   2) docker compose up -d
-#   3) 浏览器打开 http://NAS的IP:8091  （首次启动的密码看：docker logs fnhk）
+#   1) 第 1 步：在 NAS 的文件管理器里建好一个放录像的文件夹（例如共享文件夹 NVR）
+#   2) 改下面 volumes 里 `- /volume1/NVR:/rec` 左边那段 = 你建的目录
+#      （群晖 /volume1/NVR 或 /volume1/docker/NVR、飞牛 /vol1/NVR、威联通 /share/CACHEDEV1_DATA/NVR）
+#   3) docker compose up -d
+#   4) 浏览器打开 http://NAS的IP:8091，用户名 admin、密码 admin（首次启动日志里也会打印）
 services:
   fnhk:
-    image: registry.cn-hangzhou.aliyuncs.com/你的命名空间/fnhk:latest   # ← 换成你的镜像地址
+    image: ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
     container_name: fnhk
     restart: unless-stopped
+    # ★ 群晖（或任何开了防火墙的 NAS）：把下面 ports 两行删掉、改用下一行的 network_mode: host
+    #   原因：群晖防火墙默认只放行局域网网段，Docker 的 172.17.x 网段会被丢弃 → 容器完全没网（连不上摄像机）
+    # network_mode: host
     ports:
       - "8091:8091"
     environment:
       TZ: Asia/Shanghai
-      # 访问口令：不填则首次启动自动生成（看 docker logs fnhk 取）
+      # 访问口令：默认 admin/admin，登录后在「设置 → 🔑 访问口令」里可自行修改
       # NVR_HTTP_USER: admin
-      # NVR_HTTP_PASS: 你想设的密码
+      # NVR_HTTP_PASS: 你想设的密码      # 忘了密码时：加上它重建容器即可重置（不会丢配置/录像）
       # 录像保留天数 / 单段时长（秒）
       # NVR_RETENTION_DAYS: "3"
       # NVR_SEGMENT_SECONDS: "300"
     volumes:
-      - ./fnhk-data:/data          # 配置 + 运行数据
-      - ./fnhk-rec:/rec            # 录像（建议换成大盘路径，如 /volume1/NVR）
+      - fnhk-data:/data            # 配置 + 运行数据（命名卷，不用管）
+      - /volume1/NVR:/rec          # ← 只改左边这段：你建的录像目录
+volumes:
+  fnhk-data:
