@@ -8,8 +8,8 @@ mkdir -p "$(dirname "$CONF")" "${NVR_REC_ROOT:-/rec}" "${NVR_DATA:-/data}"
 
 # 首次启动（还没有配置文件）且用户没指定口令 → 自动生成一个随机口令
 if [ ! -f "$CONF" ] && [ -z "${NVR_HTTP_PASS:-}" ]; then
-  # 8 位随机口令（去掉易混淆字符）
-  NVR_HTTP_PASS="$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-10)"
+  # 用 node 生成 10 位随机口令（node 一定存在；不依赖 busybox 的 od/tr 行为）
+  NVR_HTTP_PASS="$(node -e "process.stdout.write(require('crypto').randomBytes(5).toString('hex'))")"
   export NVR_HTTP_PASS
   echo "=============================================================="
   echo " 飞海监控 首次启动 · 已自动生成访问口令"
