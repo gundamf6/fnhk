@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>飞海监控 · 设置</title>
-<link rel="stylesheet" href="style.css?v=0.4.0-1">
+<link rel="stylesheet" href="style.css?v=0.4.0-2">
 <style>
   body{padding:0 0 40px}
   .wrap{max-width:640px;margin:0 auto;padding:14px}
@@ -55,6 +55,10 @@
   .di.back{color:var(--mut,#8aa0c0)}
   .di:active{background:rgba(59,130,246,.12)}
   .di .r{margin-left:auto;color:var(--mut,#8aa0c0);font-size:11.5px}
+  .dgroup{padding:7px 14px 5px;font-size:11.5px;color:#7d8fb0;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06)}
+  .di.vol .ic{color:#60a5fa}
+  .di.vol.on{background:rgba(59,130,246,.14)}
+  .di.vol.on .r{color:#9dc1fb}
   .dfoot{padding:10px 14px;border-top:1px solid var(--line,#22314c);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mut,#8aa0c0)}
   .dfoot span:first-child{cursor:pointer;color:#9dc1fb}
   .dacts{padding:0 14px 13px;display:flex;gap:9px}
@@ -334,9 +338,8 @@ $('#addcam').onclick = () => {
 /* ---------- 目录选择器 ---------- */
 async function openPicker(){
   $('#dm').classList.remove('hidden'); $('#mkrow').classList.remove('on');
-  if (!st.volumes) {
-    try { const j = await (await fetch(U('api/browse'))).json(); st.volumes = j.roots || []; st.suggest = j.suggest || null; } catch { st.volumes = []; }
-  }
+  try { const j = await (await fetch(U('api/browse'))).json(); st.volumes = j.roots || []; st.suggest = j.suggest || null; }
+  catch { if (!st.volumes) st.volumes = []; }
   let start = st.root || st.suggest || (st.volumes[0] && st.volumes[0].path) || '/vol1';
   await navDir(start);
 }
@@ -350,9 +353,18 @@ async function navDir(p){
     $('#dcrumb').innerHTML = '位置：' + parts.map((s, i) => { acc += '/' + s;
       return i === parts.length - 1 ? `<b>${esc(s)}</b>` : `<b data-go="${esc(acc)}">${esc(s)}</b> / `; }).join('');
     let html = '';
+    // ★ 存储空间（硬盘）列表：任何层级都能一键换盘（修复：以前到盘根就出不去了）
+    if (st.volumes && st.volumes.length) {
+      html += '<div class="dgroup">存储空间（点一下切到该硬盘）</div>';
+      html += st.volumes.map(v => {
+        const on = (j.path === v.path || j.path.indexOf(v.path + '/') === 0) ? ' on' : '';
+        return `<div class="di vol${on}" data-enter="${esc(v.path)}"><span class="ic">▣</span> ${esc(v.name)}<span class="r">可用 ${fmtGB(v.free)}</span></div>`;
+      }).join('');
+      html += '<div class="dgroup">文件夹</div>';
+    }
     if (j.parent) html += `<div class="di back" data-go="${esc(j.parent)}"><span class="ic">↑</span> 返回上一级</div>`;
     html += st.dirs.map(d => `<div class="di" data-enter="${esc(d.path)}"><span class="ic">▤</span> ${esc(d.name)}<span class="r">进入</span></div>`).join('');
-    if (!st.dirs.length && !j.parent) html += `<div class="di back">（没有可选的子文件夹）</div>`;
+    if (!st.dirs.length && !j.parent) html += `<div class="di back">（该盘根目录下没有可选的子文件夹）</div>`;
     $('#dlist').innerHTML = html;
     $('#dfree').textContent = '可用 ' + fmtGB(j.free) + (j.writable ? '' : ' · 不可写');
   }catch(e){ $('#dfree').textContent = '读取失败：' + e.message; }

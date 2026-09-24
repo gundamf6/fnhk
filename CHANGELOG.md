@@ -5,6 +5,7 @@
 - 新增 `/healthz` 健康检查接口
 - 支持环境变量配置：`NVR_HTTP_USER` / `NVR_HTTP_PASS` / `NVR_PORT` / `NVR_REC_ROOT` / `NVR_RETENTION_DAYS` / `NVR_SEGMENT_SECONDS` 等
 - Docker 下首启自动生成访问口令并写入容器日志；安全策略不变（不设口令时仅监听本机）
+- 修复：设置页「选择保存目录」弹窗顶部新增「存储空间（硬盘）」列表，可在任意层级一键切换到其它硬盘（此前只能选到默认那块盘）
 
 ## 0.3.0
 - 多品牌支持：海康 / 大华 / 宇视 / TP-LINK 模板 + 「自定义 RTSP」
