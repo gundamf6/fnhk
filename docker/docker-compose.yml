@@ -1,10 +1,13 @@
 # 飞海监控 FNHK · Docker Compose 部署
 # 用法：
 #   1) 第 1 步：在 NAS 的文件管理器里建好一个放录像的文件夹（例如共享文件夹 NVR）
+#      ★ 必须先建好：部分系统（如群晖）目录不存在时不会自动创建，容器会报 Bind mount failed
 #   2) 改下面 volumes 里 `- /volume1/NVR:/rec` 左边那段 = 你建的目录
 #      （群晖 /volume1/NVR 或 /volume1/docker/NVR、飞牛 /vol1/NVR、威联通 /share/CACHEDEV1_DATA/NVR）
 #   3) docker compose up -d
 #   4) 浏览器打开 http://NAS的IP:8091，用户名 admin、密码 admin（首次启动日志里也会打印）
+#   ★ 开了防火墙的 NAS（群晖最典型）：容器用默认 bridge 网络会「完全没网」
+#     → 把下面 ports 两行删掉、改用 network_mode: host（见下）
 services:
   fnhk:
     image: ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest

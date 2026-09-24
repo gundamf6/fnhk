@@ -22,7 +22,7 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
   ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
 ```
 
-> 这里用的是 Docker 的**命名卷**（`fnhk-data` / `fnhk-rec`），**存放位置由 Docker 管理** → 飞牛 / 群晖 / 威联通 / 绿联 / 树莓派 / Windows **全平台照抄可跑**，不存在「路径填错」。
+> 这里用的是 Docker 的**命名卷**（`fnhk-data` / `fnhk-rec`），**存放位置由 Docker 管理** → 飞牛 / 威联通 / 绿联 / 树莓派 / Windows 等**照抄可跑**，不存在「路径填错」（★ 群晖例外，网络要改用 `--network host`，见文末「特别说明」）。
 > 查录像存哪：`docker volume inspect fnhk-rec`（看 `Mountpoint`）；群晖一般在 `/volume1/@docker/volumes/fnhk-rec/_data`。
 >
 > 💡 **想把录像直接放到自己的硬盘 / 共享文件夹**（方便在文件管理器里看、拷）：把 `-v fnhk-rec:/rec` 一行换成——
@@ -35,7 +35,7 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
 > | 绿联 / 极空间 / 其它国产 NAS | `-v /volume1/docker/fnhk/rec:/rec` |
 > | 树莓派 / Linux | `-v /opt/fnhk/rec:/rec` |
 >
-> 目录不存在会**自动创建**；左边随便换，右边 `/rec` **不能改**。
+> ⚠️ **左边那个目录要先自己建好**：部分系统（如群晖）目录不存在时**不会自动创建**，会直接报错 `Bind mount failed: ... does not exist`。右边 `/rec` **不能改**。
 
 **每个参数啥意思**（一个都不用改，照抄即可）：
 
@@ -145,6 +145,7 @@ docker run -d --name fnhk --restart unless-stopped --network host \
 
 好处：① 不用改群晖防火墙；② 容器里能看到 NAS 的真实 IP，启动日志直接显示 `http://192.168.20.201:8091`（不再是 `0.0.0.0`）。
 （Container Manager 图形界面里同理：网络选 **host**。）
+> · 用 host 网络后**不能用 `-p` 改端口**了；要换端口请加 `-e NVR_PORT=你的端口`。
 
 **备选**：保留 `-p 8091:8091`，去「控制面板 → 安全性 → 防火墙」加一条**允许来源 `172.17.0.0/16`、全部端口**的规则（不推荐：改了系统防火墙，且 DSM 重建规则后可能失效）。
 
@@ -183,7 +184,7 @@ docker run -d --name fnhk --restart unless-stopped --network host \
 加一个环境变量重建容器即可（配置/录像都不丢）：加 `-e NVR_HTTP_PASS=你的新密码`（compose 里加一行 `NVR_HTTP_PASS: 你的新密码`）后重新 `docker run` / `docker compose up -d`。
 
 **Q：加摄像机提示「连不上：检查 IP / 端口 / 网络」？**
-① IP 有没有填成 NAS 自己的地址；② 群晖是否开了防火墙（见文末「特别说明：群晖」）；③ 点「测试连接」看「诊断详情（ffmpeg 原话）」。
+① IP 有没有填成 NAS 自己的地址；② 群晖是否开了防火墙（见文末「特别说明：群晖」）；③ 点「测试连接」看「诊断详情（ffmpeg 原话）」；④ 若你的 NAS 也开了防火墙，把 `-p 8091:8091` 换成 `--network host` 再试。
 
 **Q：录像存在哪？**
 容器里是 `/rec`，对应你挂载的宿主机目录。建议挂到大容量硬盘，如 `/volume1/NVR`、`/vol2/1000/NVR`。
