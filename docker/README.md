@@ -49,6 +49,10 @@ docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
 
 > 最短写法 `docker run -d -p 8091:8091 <镜像>` 也能跑，但名字随机、易丢数据、开机不自启，**不建议**。
 
+> 📁 **录像到底存哪了？文件管理器里怎么找不到？** 命名卷由 Docker 自己管理，位于系统区（群晖为 `@docker` 目录，文件管理器默认不显示）。
+> · 查位置：`docker volume inspect fnhk-rec`（群晖一般 = `/volume1/@docker/volumes/fnhk-rec/_data`）
+> · **想让录像直接出现在共享文件夹里**：把 `-v fnhk-rec:/rec` 换成 `-v /volume1/docker/fnhk-rec:/rec`（飞牛 `/vol1/...`、威联通 `/share/CACHEDEV1_DATA/...`），再 `docker rm -f fnhk` + 重新 `docker run`（摄像机配置在 `fnhk-data` 卷里，不会丢）。
+
 取首次启动的访问密码：
 
 ```bash
