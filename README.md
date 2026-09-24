@@ -73,6 +73,25 @@ tools/build.sh          # 等价于：cd fn-hiknvr && fnpack build
 # 产物：fn-hiknvr/fn-hiknvr-<version>.fpk
 ```
 
+### 方式三：Docker 安装（群晖 / 威联通 / 极空间 / 绿联 / 树莓派 / 任意 Linux）
+
+不在飞牛上也能用！镜像**自带 ffmpeg**，两条命令即可跑起来：
+
+```bash
+docker run -d --name fnhk --restart unless-stopped -p 8091:8091 \
+  -e TZ=Asia/Shanghai \
+  -v /你的路径/fnhk-data:/data -v /你的路径/fnhk-rec:/rec \
+  ccr.ccs.tencentyun.com/ypopenclaw/fnhk:latest
+
+docker logs fnhk      # 首次启动的访问密码在这里
+```
+
+浏览器打开 `http://设备IP:8091`（用户名 `admin`）即可。
+
+- 支持 **amd64 + arm64**，Docker 会自动选对应架构
+- 完整部署说明（compose 写法、环境变量、离线包安装、常见问题）见 **[`docker/README.md`](docker/README.md)**
+- 离线安装（网络拉不动镜像时）：从 Releases 下载 `fnhk-docker-offline-amd64.tar.gz(.part-*)`，`docker load` 导入即可，详见 `docker/README.md`
+
 ## ⚙️ 首次配置
 
 打开「飞海监控 → 右上角 ⚙」，按卡片填：
