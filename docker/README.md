@@ -99,7 +99,7 @@ docker logs fnhk
 容器里是 `/rec`，对应你挂载的宿主机目录。建议挂到大容量硬盘，如 `/volume1/NVR`、`/vol2/1000/NVR`。
 
 **Q：ARM 设备（树莓派 / 部分 ARM 群晖）能用吗？**
-可以，镜像同时提供 amd64 和 arm64 两种架构，Docker 会自动拉对应版本。
+当前提供的是 **amd64** 镜像（绝大多数 NAS / 主机都是 x86_64）。如果你需要在 **arm64**（如树莓派、ARM 架构 NAS）上跑，可在 GitHub 那边勾选 `push_registry=true` 让 CI 出多架构镜像，或用 `buildx --platform linux/arm64` 自行构建。
 
 **Q：怎么升级？**
 ```bash
