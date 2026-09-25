@@ -1,7 +1,7 @@
 appname               = fn-hiknvr
 version               = 0.4.0
 display_name          = 飞海监控
-desc                  = 在 fnOS 上搭建类似群晖 Surveillance Station 的监控管理套件：面向海康威视摄像头的本地 NVR——实时预览、连续+事件双轨录像、网页回放、本地移动侦测。<br>只读拉取 RTSP（绝不修改摄像头设置），支持多台摄像机与自定义录像目录，数据仅保存在本机。
+desc                  = 在 fnOS 上搭建类似群晖 Surveillance Station 的监控管理套件：支持海康/大华/宇视/TP-LINK 等多品牌摄像头的本地 NVR——实时预览、连续+事件双轨录像、网页回放、本地移动侦测。<br>只读拉取 RTSP（绝不修改摄像头设置），支持多台摄像机与自定义录像目录，数据仅保存在本机。
 source                = thirdparty
 platform              = x86
 maintainer            = DP
